@@ -2,17 +2,17 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>NAN blog</title>
-    <link>http://localhost:1313/</link>
+    <link>https://theflash010.github.io/</link>
     <description>Recent content on NAN blog</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-gb</language>
-    <lastBuildDate>Fri, 03 Jan 2025 14:30:31 +0800</lastBuildDate><atom:link href="http://localhost:1313/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 03 Jan 2025 14:30:31 +0800</lastBuildDate><atom:link href="https://theflash010.github.io/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Introduce</title>
-      <link>http://localhost:1313/about/</link>
+      <link>https://theflash010.github.io/about/</link>
       <pubDate>Fri, 03 Jan 2025 14:30:31 +0800</pubDate>
       
-      <guid>http://localhost:1313/about/</guid>
+      <guid>https://theflash010.github.io/about/</guid>
       
       <description>&lt;ul&gt;
 &lt;li&gt;graduated from Jilin University (CS)&lt;/li&gt;
@@ -23,10 +23,10 @@
     
     <item>
       <title>CUDA_Study</title>
-      <link>http://localhost:1313/posts/cuda_study/</link>
+      <link>https://theflash010.github.io/posts/cuda_study/</link>
       <pubDate>Fri, 03 Jan 2025 14:02:03 +0800</pubDate>
       
-      <guid>http://localhost:1313/posts/cuda_study/</guid>
+      <guid>https://theflash010.github.io/posts/cuda_study/</guid>
       
       <description>&lt;h2 id=&#34;heterogeneous-programming异构编程&#34;&gt;Heterogeneous Programming（异构编程）&lt;/h2&gt;
 &lt;p&gt;用非单一架构的机器进行计算的编程模型，例如CPU与GPU融合&lt;/p&gt;
