@@ -1,7 +1,7 @@
 {
     "name": "sitename",
     "short_name": "sitename",
-    "start_url": "/",
+    "start_url": "https://theflash010.github.io/",
     "theme_color": "#434648",
     "background_color": "#fff",
     "display": "standalone",
