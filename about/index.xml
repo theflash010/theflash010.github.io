@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Abouts on NAN blog</title>
+    <link>http://localhost:1313/about/</link>
+    <description>Recent content in Abouts on NAN blog</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-gb</language>
+    <lastBuildDate>Fri, 03 Jan 2025 14:30:31 +0800</lastBuildDate><atom:link href="http://localhost:1313/about/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Introduce</title>
+      <link>http://localhost:1313/about/introduce/</link>
+      <pubDate>Fri, 03 Jan 2025 14:30:31 +0800</pubDate>
+      
+      <guid>http://localhost:1313/about/introduce/</guid>
+      
+      <description>&lt;ul&gt;
+&lt;li&gt;graduated from Jilin University (CS)&lt;/li&gt;
+&lt;li&gt;pursuing a PhD at Zhejiang University(CS) right now&lt;/li&gt;
+&lt;/ul&gt;</description>
+      
+    </item>
+    
+  </channel>
+</rss>

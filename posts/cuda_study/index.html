@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en-gb"><head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script><meta charset="utf-8">
+<meta http-equiv="content-type" content="text/html">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title itemprop="name">CUDA_Study | NAN blog</title>
+<meta property="og:title" content="CUDA_Study | NAN blog" />
+<meta name="twitter:title" content="CUDA_Study | NAN blog" />
+<meta itemprop="name" content="CUDA_Study | NAN blog" />
+<meta name="application-name" content="CUDA_Study | NAN blog" />
+<meta property="og:site_name" content="NAN blog" />
+
+<meta name="description" content="Record of Learning Journey">
+<meta itemprop="description" content="Record of Learning Journey" />
+<meta property="og:description" content="Record of Learning Journey" />
+<meta name="twitter:description" content="Record of Learning Journey" />
+
+<meta property="og:locale" content="en-gb" />
+<meta name="language" content="en-gb" />
+
+  <link rel="alternate" hreflang="en-gb" href="http://localhost:1313/posts/cuda_study/" title="English" />
+
+
+
+
+
+    
+    
+    
+
+    <meta property="og:type" content="article" />
+    <meta property="og:article:published_time" content=2025-01-03T14:02:03&#43;0800 />
+    <meta property="article:published_time" content=2025-01-03T14:02:03&#43;0800 />
+    <meta property="og:url" content="http://localhost:1313/posts/cuda_study/" />
+
+    
+    <meta property="og:article:author" content="Nan Z" />
+    <meta property="article:author" content="Nan Z" />
+    <meta name="author" content="Nan Z" />
+    
+    
+
+    
+
+    <script defer type="application/ld+json">
+    {
+        "@context": "http://schema.org",
+        "@type": "Article",
+        "headline": "CUDA_Study",
+        "author": {
+        "@type": "Person",
+        "name": ""
+        },
+        "datePublished": "2025-01-03",
+        "description": "",
+        "wordCount":  345 ,
+        "mainEntityOfPage": "True",
+        "dateModified": "2025-01-03",
+        "image": {
+        "@type": "imageObject",
+        "url": ""
+        },
+        "publisher": {
+        "@type": "Organization",
+        "name": "NAN blog"
+        }
+    }
+    </script>
+
+
+<meta name="generator" content="Hugo 0.140.2">
+
+    
+    <meta property="og:url" content="http://localhost:1313/posts/cuda_study/">
+  <meta property="og:site_name" content="NAN blog">
+  <meta property="og:title" content="CUDA_Study">
+  <meta property="og:description" content="Heterogeneous Programming（异构编程） 用非单一架构的机器进行计算的编程模型，例如CPU与GPU融合
+Asynchronous SIMT Programming Model（异步SIMT编程模型） 指CUDA程序在执行某些耗时操作（如GPU内核执行、内存拷贝等）时，不会等待这些操作完成，而是允许(CPU中)程序继续执行后续的命令或任务。这种机制使得CPU和GPU能够更高效地并行工作，提高了程序的整体性能。所谓异步Asyn,就是指多个设备之间步伐不一致，随便执行。同步Syn是指多个设备间需要步伐一致，当一个设备在运行时，其他设备需要等待它结束，再一起继续往下执行。
+Compute Capability版本与CUDA版本 设备的Compute Capability由版本号表示，有时也称其“ SM 版本”。该版本号标识 GPU 硬件支持的特性，并由应用程序在运行时使用，以确定当前GPU上可用的硬件特性和指令。Compute Capability包括一个主要版本号X和一个次要版本号Y，用X.Y表示。CUDA 版本指的是 CUDA软件平台的版本。CUDA平台被应用开发人员用来创建那些可以运行在许多代GPU架构上的应用程序，包括未来尚未发明的 GPU架构。尽管CUDA平台的新版本通常会通过支持新GPU架构的Compute Capability版本来增加对于该架构的本地支持，但 CUDA平台的新版本通常也会包含软件功能，而这些是与硬件独立的。
+Cuda Runtime CUDA Runtime是NVIDIA提供的一个用于简化CUDA编程的高级API，它建立在CUDA Driver API之上，提供了一组更高层次的接口，旨在使开发者更容易使用CUDA进行并行编程。如cudaMalloc和cudaFree函数,允许开发者定义和启动核函数（kernel functions）。
+Cuda Context CUDA的上下文（Context）是CUDA编程中的一个重要概念，它代表了CUDA运行时（Runtime）与特定CUDA设备（通常是NVIDIA GPU）之间的关联和状态信息。当你使用CUDA Runtime API进行编程时，CUDA运行时会自动为每个CUDA设备创建一个上下文（除非你显式地请求在不同的线程中为每个设备创建独立的上下文）。一个context是为一个进程服务的，该进程内的所有线程共同使用这个context。
+primary context 在CUDA编程中，primary context（主上下文）是指与CUDA设备关联的第一个或默认的上下文(自动创建，用户不可见)。这个上下文在CUDA运行时（Runtime）初始化时自动创建，并且通常用于管理该设备上的大部分CUDA操作。它在应用程序的所有主机线程之间共享。、
+Cuda Stream （Cuda流） 一般使用GPU加速，启动GPU内核或内存数据复制(CudaMemcpy)这类GPU操作是按顺序进行的，这实际是因为这些操作是由一个默认的流掌控的，如果想要让GPU的一些操作并发执行，就需要将不同操作放到不同的流上，流内部的操作顺序执行，不同流之间的操作异步执行，这就是流的概念。 CUDA流指的是由主机发出的在一个设备中执行的CUDA操作序列。一个CUDA流中的各个操作按照主机发布的次序执行；但来自两个不同CUDA流的操作不一定按照某个次序执行，有可能是并发或者交错地执行。可以将流类比成 CPU 编程中的“线程”的概念（注意不是 CUDA 编程概念中的线程）：同一个“线程”中的任务串行执行，不同“线程”可以并行执行。 默认流可以分为两种：legacy default stream 和 per-thread default stream。
+legacy default stream 默认情况下（无编译选项或者使用 nvcc 编译时加上 –default-stream legacy 编译选项），每个设备（每张 GPU 卡）会创建一个默认流（NULL 流），称为 legacy default stream，该设备上所有不指定流或者指定默认流的操作全都放到这个流中。如果主机使用多线程，那么多线程的GPU操作，都会放到这个流中，共用这一个流。 注意：如果主机线程在来自不同流(自定义流)的两个命令之间向 legacy default stream 发出指令，那么这些来自不同流的命令不能同时运行。一句话总结：legacy default stream 会和所有非 non-blocking stream 产生同步。">
+  <meta property="og:locale" content="en_gb">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="posts">
+    <meta property="article:published_time" content="2025-01-03T14:02:03+08:00">
+    <meta property="article:modified_time" content="2025-01-03T14:02:03+08:00">
+
+
+    
+    
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="CUDA_Study">
+  <meta name="twitter:description" content="Heterogeneous Programming（异构编程） 用非单一架构的机器进行计算的编程模型，例如CPU与GPU融合
+Asynchronous SIMT Programming Model（异步SIMT编程模型） 指CUDA程序在执行某些耗时操作（如GPU内核执行、内存拷贝等）时，不会等待这些操作完成，而是允许(CPU中)程序继续执行后续的命令或任务。这种机制使得CPU和GPU能够更高效地并行工作，提高了程序的整体性能。所谓异步Asyn,就是指多个设备之间步伐不一致，随便执行。同步Syn是指多个设备间需要步伐一致，当一个设备在运行时，其他设备需要等待它结束，再一起继续往下执行。
+Compute Capability版本与CUDA版本 设备的Compute Capability由版本号表示，有时也称其“ SM 版本”。该版本号标识 GPU 硬件支持的特性，并由应用程序在运行时使用，以确定当前GPU上可用的硬件特性和指令。Compute Capability包括一个主要版本号X和一个次要版本号Y，用X.Y表示。CUDA 版本指的是 CUDA软件平台的版本。CUDA平台被应用开发人员用来创建那些可以运行在许多代GPU架构上的应用程序，包括未来尚未发明的 GPU架构。尽管CUDA平台的新版本通常会通过支持新GPU架构的Compute Capability版本来增加对于该架构的本地支持，但 CUDA平台的新版本通常也会包含软件功能，而这些是与硬件独立的。
+Cuda Runtime CUDA Runtime是NVIDIA提供的一个用于简化CUDA编程的高级API，它建立在CUDA Driver API之上，提供了一组更高层次的接口，旨在使开发者更容易使用CUDA进行并行编程。如cudaMalloc和cudaFree函数,允许开发者定义和启动核函数（kernel functions）。
+Cuda Context CUDA的上下文（Context）是CUDA编程中的一个重要概念，它代表了CUDA运行时（Runtime）与特定CUDA设备（通常是NVIDIA GPU）之间的关联和状态信息。当你使用CUDA Runtime API进行编程时，CUDA运行时会自动为每个CUDA设备创建一个上下文（除非你显式地请求在不同的线程中为每个设备创建独立的上下文）。一个context是为一个进程服务的，该进程内的所有线程共同使用这个context。
+primary context 在CUDA编程中，primary context（主上下文）是指与CUDA设备关联的第一个或默认的上下文(自动创建，用户不可见)。这个上下文在CUDA运行时（Runtime）初始化时自动创建，并且通常用于管理该设备上的大部分CUDA操作。它在应用程序的所有主机线程之间共享。、
+Cuda Stream （Cuda流） 一般使用GPU加速，启动GPU内核或内存数据复制(CudaMemcpy)这类GPU操作是按顺序进行的，这实际是因为这些操作是由一个默认的流掌控的，如果想要让GPU的一些操作并发执行，就需要将不同操作放到不同的流上，流内部的操作顺序执行，不同流之间的操作异步执行，这就是流的概念。 CUDA流指的是由主机发出的在一个设备中执行的CUDA操作序列。一个CUDA流中的各个操作按照主机发布的次序执行；但来自两个不同CUDA流的操作不一定按照某个次序执行，有可能是并发或者交错地执行。可以将流类比成 CPU 编程中的“线程”的概念（注意不是 CUDA 编程概念中的线程）：同一个“线程”中的任务串行执行，不同“线程”可以并行执行。 默认流可以分为两种：legacy default stream 和 per-thread default stream。
+legacy default stream 默认情况下（无编译选项或者使用 nvcc 编译时加上 –default-stream legacy 编译选项），每个设备（每张 GPU 卡）会创建一个默认流（NULL 流），称为 legacy default stream，该设备上所有不指定流或者指定默认流的操作全都放到这个流中。如果主机使用多线程，那么多线程的GPU操作，都会放到这个流中，共用这一个流。 注意：如果主机线程在来自不同流(自定义流)的两个命令之间向 legacy default stream 发出指令，那么这些来自不同流的命令不能同时运行。一句话总结：legacy default stream 会和所有非 non-blocking stream 产生同步。">
+
+
+    
+
+    <link rel="canonical" href="http://localhost:1313/posts/cuda_study/">
+    <link href="/style.min.2d921c18cf1ec555ffc03d59a8adc211c402c68c930c27d6a0c306ab175a8d09.css" rel="stylesheet">
+    <link href="/code-highlight.min.706d31975fec544a864cb7f0d847a73ea55ca1df91bf495fd12a177138d807cf.css" rel="stylesheet">
+
+    
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png">
+    <link rel="mask-icon" href="/icons/safari-pinned-tab.svg">
+    <link rel="shortcut icon" href="/favicon.ico">
+
+
+
+
+<link rel="manifest" href="http://localhost:1313/site.webmanifest">
+
+<meta name="msapplication-config" content="/browserconfig.xml">
+<meta name="msapplication-TileColor" content="#2d89ef">
+<meta name="theme-color" content="#434648">
+
+    
+    <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg">
+
+    
+    
+</head>
+<body data-theme = "auto" class="notransition">
+
+<script src="/js/theme.js"></script>
+
+<div class="navbar" role="navigation">
+    <nav class="menu" aria-label="Main Navigation">
+        <a href="http://localhost:1313/" class="logo">
+            <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" 
+viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" 
+stroke-linejoin="round" class="feather feather-home">
+<title>Home</title>
+<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+<polyline points="9 22 9 12 15 12 15 22"></polyline>
+</svg>
+        </a>
+        <input type="checkbox" id="menu-trigger" class="menu-trigger" />
+        <label for="menu-trigger">
+            <span class="menu-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" stroke="currentColor" fill="none" viewBox="0 0 14 14"><title>Menu</title><path stroke-linecap="round" stroke-linejoin="round" d="M10.595 7L3.40726 7"></path><path stroke-linecap="round" stroke-linejoin="round" d="M10.5096 3.51488L3.49301 3.51488"></path><path stroke-linecap="round" stroke-linejoin="round" d="M10.5096 10.4851H3.49301"></path><path stroke-linecap="round" stroke-linejoin="round" d="M0.5 12.5V1.5C0.5 0.947715 0.947715 0.5 1.5 0.5H12.5C13.0523 0.5 13.5 0.947715 13.5 1.5V12.5C13.5 13.0523 13.0523 13.5 12.5 13.5H1.5C0.947715 13.5 0.5 13.0523 0.5 12.5Z"></path></svg>
+            </span>
+        </label>
+
+        <div class="trigger">
+            <ul class="trigger-container">
+                
+                
+                <li>
+                    <a class="menu-link " href="/">
+                        Home
+                    </a>
+                    
+                </li>
+                
+                <li>
+                    <a class="menu-link active" href="/posts/">
+                        Posts
+                    </a>
+                    
+                </li>
+                
+                <li>
+                    <a class="menu-link " href="/about/">
+                        About
+                    </a>
+                    
+                </li>
+                
+                <li class="menu-separator">
+                    <span>|</span>
+                </li>
+                
+                
+            </ul>
+            <a id="mode" href="#">
+                <svg xmlns="http://www.w3.org/2000/svg" class="mode-sunny" width="21" height="21" viewBox="0 0 14 14" stroke-width="1">
+<title>LIGHT</title><g><circle cx="7" cy="7" r="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"></circle><line x1="7" y1="0.5" x2="7" y2="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="2.4" y1="2.4" x2="3.82" y2="3.82" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="0.5" y1="7" x2="2.5" y2="7" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="2.4" y1="11.6" x2="3.82" y2="10.18" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="7" y1="13.5" x2="7" y2="11.5" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="11.6" y1="11.6" x2="10.18" y2="10.18" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="13.5" y1="7" x2="11.5" y2="7" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="11.6" y1="2.4" x2="10.18" y2="3.82" fill="none" stroke-linecap="round" stroke-linejoin="round"></line></g></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" class="mode-moon" width="21" height="21" viewBox="0 0 14 14" stroke-width="1">
+<title>DARK</title><g><circle cx="7" cy="7" r="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"></circle><line x1="7" y1="0.5" x2="7" y2="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="2.4" y1="2.4" x2="3.82" y2="3.82" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="0.5" y1="7" x2="2.5" y2="7" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="2.4" y1="11.6" x2="3.82" y2="10.18" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="7" y1="13.5" x2="7" y2="11.5" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="11.6" y1="11.6" x2="10.18" y2="10.18" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="13.5" y1="7" x2="11.5" y2="7" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="11.6" y1="2.4" x2="10.18" y2="3.82" fill="none" stroke-linecap="round" stroke-linejoin="round"></line></g></svg>
+            </a>
+        </div>
+    </nav>
+</div>
+
+<div class="wrapper post">
+    <main class="page-content" aria-label="Content">
+        <article>
+            <header class="header">
+                <h1 class="header-title">CUDA_Study</h1>
+                
+                
+                
+                <div class="post-meta">
+                    <time datetime="2025-01-03T14:02:03&#43;08:00" itemprop="datePublished"> 3 Jan 2025 </time>
+                </div>
+                
+            </header>
+            
+    
+    <details class="toc" ZgotmplZ>
+        <summary><b>Table of Contents</b></summary>
+        <nav id="TableOfContents">
+  <ul>
+    <li><a href="#heterogeneous-programming异构编程">Heterogeneous Programming（异构编程）</a>
+      <ul>
+        <li>
+          <ul>
+            <li><a href="#asynchronous-simt-programming-model异步simt编程模型">Asynchronous SIMT Programming Model（异步SIMT编程模型）</a></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+    <li><a href="#compute-capability版本与cuda版本">Compute Capability版本与CUDA版本</a></li>
+    <li><a href="#cuda-runtime">Cuda Runtime</a></li>
+    <li><a href="#cuda-context">Cuda Context</a>
+      <ul>
+        <li>
+          <ul>
+            <li><a href="#primary-context">primary context</a></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+    <li><a href="#cuda-stream-cuda流">Cuda Stream （Cuda流）</a>
+      <ul>
+        <li>
+          <ul>
+            <li><a href="#legacy-default-stream">legacy default stream</a></li>
+            <li><a href="#per-thread-default-stream">per-thread default stream</a></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+    <li><a href="#memory-synchronization-domains">Memory Synchronization Domains</a></li>
+    <li><a href="#programmatic-dependent-launch-and-synchronization程序化依赖启动与同步">Programmatic Dependent Launch and Synchronization（程序化依赖启动与同步）</a></li>
+    <li><a href="#cuda-graphs-cuda图">CUDA Graphs CUDA图</a></li>
+    <li><a href="#events">Events</a></li>
+  </ul>
+</nav>
+    </details>
+            <div class="page-content">
+                <h2 id="heterogeneous-programming异构编程">Heterogeneous Programming（异构编程）</h2>
+<p>用非单一架构的机器进行计算的编程模型，例如CPU与GPU融合</p>
+<h4 id="asynchronous-simt-programming-model异步simt编程模型">Asynchronous SIMT Programming Model（异步SIMT编程模型）</h4>
+<p>指CUDA程序在执行某些耗时操作（如GPU内核执行、内存拷贝等）时，不会等待这些操作完成，而是允许(CPU中)程序继续执行后续的命令或任务。这种机制使得CPU和GPU能够更高效地并行工作，提高了程序的整体性能。所谓异步Asyn,就是指多个设备之间步伐不一致，随便执行。同步Syn是指多个设备间需要步伐一致，当一个设备在运行时，其他设备需要等待它结束，再一起继续往下执行。</p>
+<h2 id="compute-capability版本与cuda版本">Compute Capability版本与CUDA版本</h2>
+<p>设备的Compute Capability由版本号表示，有时也称其“ SM 版本”。该版本号标识 GPU 硬件支持的特性，并由应用程序在运行时使用，以确定当前GPU上可用的硬件特性和指令。Compute Capability包括一个主要版本号X和一个次要版本号Y，用X.Y表示。CUDA 版本指的是 CUDA软件平台的版本。CUDA平台被应用开发人员用来创建那些可以运行在许多代GPU架构上的应用程序，包括未来尚未发明的 GPU架构。尽管CUDA平台的新版本通常会通过支持新GPU架构的Compute Capability版本来增加对于该架构的本地支持，但 CUDA平台的新版本通常也会包含软件功能，而这些是与硬件独立的。</p>
+<h2 id="cuda-runtime">Cuda Runtime</h2>
+<p>CUDA Runtime是NVIDIA提供的一个用于简化CUDA编程的高级API，它建立在CUDA Driver API之上，提供了一组更高层次的接口，旨在使开发者更容易使用CUDA进行并行编程。如cudaMalloc和cudaFree函数,允许开发者定义和启动核函数（kernel functions）。</p>
+<h2 id="cuda-context">Cuda Context</h2>
+<p>CUDA的上下文（Context）是CUDA编程中的一个重要概念，它代表了CUDA运行时（Runtime）与特定CUDA设备（通常是NVIDIA GPU）之间的关联和状态信息。当你使用CUDA Runtime API进行编程时，CUDA运行时会自动为每个CUDA设备创建一个上下文（除非你显式地请求在不同的线程中为每个设备创建独立的上下文）。一个context是为一个进程服务的，该进程内的所有线程共同使用这个context。</p>
+<h4 id="primary-context">primary context</h4>
+<p>在CUDA编程中，primary context（主上下文）是指与CUDA设备关联的第一个或默认的上下文(自动创建，用户不可见)。这个上下文在CUDA运行时（Runtime）初始化时自动创建，并且通常用于管理该设备上的大部分CUDA操作。它在应用程序的所有主机线程之间共享。、</p>
+<h2 id="cuda-stream-cuda流">Cuda Stream （Cuda流）</h2>
+<p>一般使用GPU加速，启动GPU内核或内存数据复制(CudaMemcpy)这类GPU操作是按顺序进行的，这实际是因为这些操作是由一个默认的流掌控的，如果想要让GPU的一些操作并发执行，就需要将不同操作放到不同的流上，流内部的操作顺序执行，不同流之间的操作异步执行，这就是流的概念。
+CUDA流指的是由主机发出的在一个设备中执行的CUDA操作序列。一个CUDA流中的各个操作按照主机发布的次序执行；但来自两个不同CUDA流的操作不一定按照某个次序执行，有可能是并发或者交错地执行。可以将流类比成 CPU 编程中的“线程”的概念（注意不是 CUDA 编程概念中的线程）：同一个“线程”中的任务串行执行，不同“线程”可以并行执行。
+默认流可以分为两种：legacy default stream 和 per-thread default stream。</p>
+<h4 id="legacy-default-stream">legacy default stream</h4>
+<p>默认情况下（无编译选项或者使用 nvcc 编译时加上 &ndash;default-stream legacy 编译选项），每个设备（每张 GPU 卡）会创建一个默认流（NULL 流），称为 legacy default stream，该设备上所有不指定流或者指定默认流的操作全都放到这个流中。如果主机使用多线程，那么多线程的GPU操作，都会放到这个流中，共用这一个流。
+注意：如果主机线程在来自不同流(自定义流)的两个命令之间向 legacy default stream 发出指令，那么这些来自不同流的命令不能同时运行。一句话总结：legacy default stream 会和所有非 non-blocking stream 产生同步。</p>
+<h4 id="per-thread-default-stream">per-thread default stream</h4>
+<p>在 CUDA 7.0 及以后的版本中，如果使用 nvcc 编译时加上 &ndash;default-stream per-thread 编译选项，每个主机线程会创建出一个默认流，称为 per-thread default stream。这样一来，每个线程的默认流之间就可以并发执行了。也就是说如果主机有多个线程，每个线程都会有各自的流，不同线程如果启用了内核或其他GPU操作，只会将这些操作放到各自的流上（区别于legacy default stream的共用流）。
+此外，stream具有优先级，可以在创建流时设定其优先级属性，高优先级流中的待处理工作优先于低优先级流中的待处理工作。</p>
+<h2 id="memory-synchronization-domains">Memory Synchronization Domains</h2>
+<p>内存同步域，就是指为保持内存一致性，需要将处在同一内存同步域中的内核中的数据进行同步，以保证数据的正确性。最普遍的同步域有cuda::thread_scope_device设备同步域(设备内需要一致性，如__device__)和cuda::thread_scope_system系统同步域(设备和主机都需要一致性，比如__managed__)。
+为了实现内存同步域数据的一致性，cuda使用的是Memory Fence内存栅栏机制，内存栅栏的调用有显式的，也有隐式的。举个例子，当进行原子操作时，会在操作前使用Memory Fence来确保与该原子变量处在同一同步域的变量都已被更新(也就是这个Kernel对同一同步域的其他Kernel之前进行的写操作是可见的)，从而保证数据正确性。但是，这样也引入了一个问题，由于使用Memory Fence实现数据同步，有些同步实际上是不需要的，这就导致Memory Fence Interference问题，即某些 CUDA 应用进程可能会性能下降，因为Memory Fence操作等待的事务数量超过了 CUDA 内存一致性模型所需的事务数量。举个例子，如下所示:
+<strong>managed</strong> int x = 0;
+<strong>device</strong>  cuda::atomic&lt;int, cuda::thread_scope_device&gt; a(0);
+<strong>managed</strong> cuda::atomic&lt;int, cuda::thread_scope_system&gt; b(0);
+Thread 1 (SM)	Thread 2 (SM)	Thread 3 (CPU)
+x = 1;a = 1;	while (a != 1) ;assert(x == 1);b = 1;	while (b != 1) ;assert(x == 1);
+在a=1时由于原子操作，导致显式调用Memory Fence保持一致性，保证x,a都被更新，对Thread2可见。
+在b=1时也是原子操作，这时是cuda::thread_scope_system系统同步域，所有变量都会被保证更新，但实际上对于Thread3来说，只需要b和x的更新可见即可，那么如果有其他变量由于处在一个同步域也要求被更新，就会导致多余的更新事务，降低性能。
+为解决上述问题，从 Hopper 架构 GPU 和 CUDA 12.0 开始，内存同步域功能提供了一种减轻此类Interference的方法。可以在启动内核时自动配置选择在不同的Memory Synchronization Domains，从而避免不必要的数据同步事件。</p>
+<h2 id="programmatic-dependent-launch-and-synchronization程序化依赖启动与同步">Programmatic Dependent Launch and Synchronization（程序化依赖启动与同步）</h2>
+<p>在常见的流执行过程是一个Kernel完全执行完，接着第二个Kernel执行,因为这两个Kernel之间往往存在依赖，否则可以直接用不同流并行执行。但是实际上第二个Kernel未必所有操作都依赖第一个Kernel的结果，比如Kernel2中的初始化和内存分配过程可以在Kernel1执行时并行完成，从而获得更大的并行度，这就是Programmatic Dependent Launch and Synchronization。cuda为实现这种并行提供了可用的API,可以根据依赖关系自动设定并行区域，简单例子如下:
+<strong>global</strong> void primary_kernel() {
+// Initial work that should finish before starting secondary kernel</p>
+<p>// Trigger the secondary kernel
+cudaTriggerProgrammaticLaunchCompletion();</p>
+<p>// Work that can coincide with the secondary kernel
+}</p>
+<p><strong>global</strong> void secondary_kernel()
+{
+// Independent work</p>
+<p>// Will block until all primary kernels the secondary kernel is dependent on have completed and flushed results to global memory
+cudaGridDependencySynchronize();</p>
+<p>// Dependent work
+}</p>
+<p>cudaLaunchAttribute attribute[1];
+attribute[0].id = cudaLaunchAttributeProgrammaticStreamSerialization;
+attribute[0].val.programmaticStreamSerializationAllowed = 1;
+configSecondary.attrs = attribute;
+configSecondary.numAttrs = 1;</p>
+<p>primary_kernel&laquo;&lt;grid_dim, block_dim, 0, stream&raquo;&gt;();
+cudaLaunchKernelEx(&amp;configSecondary, secondary_kernel);</p>
+<h2 id="cuda-graphs-cuda图">CUDA Graphs CUDA图</h2>
+<p>CUDA Graphs 提供了一种在 CUDA 中提交工作的新模型(和Stream一样)。Graphs 由一系列操作构成，例如内核启动等，并通过依赖关系连接，同时图的定义和执行彼此独立。这使得一个 Graphs 可以一次定义，多次启动。将 Graphs 的定义与执行分开可以实现许多优化：首先，与 Stream 相比，因为大部分设置都是提前完成的，故降低了 CPU 的启动成本；其次，Graph 可以将整个工作流呈现给 CUDA ，CUDA 可以对其进行优化，而这对于 Stream的分段工作提交机制来说可能无法实现。</p>
+<p>使用 Graphs 的工作提交分为三个阶段：definition定义、instantiation实例化和execution执行。</p>
+<p>在定义阶段，程序创建 Graph 中操作的描述以及它们之间的依赖关系。</p>
+<p>实例化获取 Graph 模板的快照，对其进行验证，并执行大部分的设置和初始化工作，目的是最大限度地减少启动时所需要的工作。 生成的实例称为可执行图 (Executable Graph)。</p>
+<p>Executable Graph 可以在 Stream 中启动，与任何其他的 CUDA 工作类似。 它可以在不重复实例化的情况下启动任意多次。
+Updating Instantiated Graphs更新实例图</p>
+<p>使用图的任务提交分为三个不同的阶段：定义、实例化和执行。在工作流不改变的情况下，定义和实例化的开销可以分摊到多次执行中，为 Graph 提供了明显优于 Stream 的优势。
+图是工作流的快照，包括内核、参数和依赖项，这些要素可以使图能够尽可能快速有效地重复执行。当工作流发生变化时，图就需要更新，对其进行修改。对图结构（例如拓扑或节点类型）的重大更改需要重新实例化原图，这是因为各种与拓扑相关的优化技术需要重新应用。
+反复实例化会降低图执行带来的整体性能优势，但通常情况下，只有图的节点参数（例如内核参数和 cudaMemcpy 地址）发生变化，而拓扑结构保持不变。在这种情况下，CUDA 提供了一种称为“图更新 (Graph Update ) ”的轻量级机制，它允许 in-place 修改图中的节点参数，而无需重建整个图。这比重新实例化要高效得多。</p>
+<p>CUDA 提供了两种更新实例化图的机制，whole graph update全图更新和individual node update单节点更新。全图更新允许用户提供一个拓扑相同的 cudaGraph_t 对象，其节点包含更新的参数。单节点更新允许用户显式更新单节点的参数。当大量节点被更新，或当调用者不知道图的拓扑结构时（即，图是由库调用的 Stream Capture 产生的），使用全图更新会更方便。当更改的数量很少并且用户拥有需要更新的节点的句柄时，首选使用单节点更新。单节点更新将跳过未修改的节点的拓扑检查与比较，因此在许多情况下它可以更高效。</p>
+<h2 id="events">Events</h2>
+<p>RunTime运行时提供了一种密切监视设备进度，以及进行准确计时，的方法，该方法是让应用程序异步地记录程序中任意点的事件 (Events)，并通过查询这些事件何时完成来实现对于设备地监控。 当事件之前的所有任务（或给定 Stream 中的所有命令）都已完成时，事件也会完成。空 Stream 中的事件会在全部 Stream 中</p>
+
+            </div>
+        </article></main>
+</div>
+<footer class="footer">
+    <span class="footer_item"> </span>
+    &nbsp;
+
+    <div class="footer_social-icons">
+<a href="https://github.com/theflash010" target="_blank" rel="noopener noreferrer me"
+    title="Github">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+    stroke-linecap="round" stroke-linejoin="round">
+    <path
+        d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
+    </path>
+</svg>
+</a>
+<a href="https://space.bilibili.com/106734387?spm_id_from=333.1007.0.0" target="_blank" rel="noopener noreferrer me"
+    title="Bilibili">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1.3333" y="6" width="21.333" height="15.333" rx="4" ry="4"/>
+    <path d="m8 12.4v1.2"/>
+    <path d="m16 12.4v1.2"/>
+    <path d="m5.8853 2.6667 2.6667 2.6667"/>
+    <path d="m18.115 2.6667-2.6667 2.6667"/>
+</svg>
+</a>
+<a href="/index.xml" target="_blank" rel="noopener noreferrer me"
+    title="Rss">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+    stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 11a9 9 0 0 1 9 9" />
+    <path d="M4 4a16 16 0 0 1 16 16" />
+    <circle cx="5" cy="19" r="1" />
+</svg>
+</a>
+</div>
+    <small class="footer_copyright">
+        © 2025 Nan Z.
+        Powered by <a href="https://github.com/hugo-sid/hugo-blog-awesome" target="_blank" rel="noopener">Hugo blog awesome</a>.
+    </small>
+</footer><a href="#" title="Go to top" id="totop">
+    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" stroke="currentColor" viewBox="0 96 960 960">
+    <path d="M283 704.739 234.261 656 480 410.261 725.739 656 677 704.739l-197-197-197 197Z"/>
+</svg>
+
+</a>
+
+
+    
+
+
+
+
+    
+    
+        
+    
+
+    
+    
+        
+    
+
+
+
+    
+    <script async src="http://localhost:1313/js/main.js" ></script>
+
+    
+
+</body>
+</html>

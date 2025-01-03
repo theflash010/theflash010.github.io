@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Posts on NAN blog</title>
+    <link>http://localhost:1313/posts/</link>
+    <description>Recent content in Posts on NAN blog</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-gb</language>
+    <lastBuildDate>Fri, 03 Jan 2025 14:02:03 +0800</lastBuildDate><atom:link href="http://localhost:1313/posts/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>CUDA_Study</title>
+      <link>http://localhost:1313/posts/cuda_study/</link>
+      <pubDate>Fri, 03 Jan 2025 14:02:03 +0800</pubDate>
+      
+      <guid>http://localhost:1313/posts/cuda_study/</guid>
+      
+      <description>&lt;h2 id=&#34;heterogeneous-programming异构编程&#34;&gt;Heterogeneous Programming（异构编程）&lt;/h2&gt;
+&lt;p&gt;用非单一架构的机器进行计算的编程模型，例如CPU与GPU融合&lt;/p&gt;
+&lt;h4 id=&#34;asynchronous-simt-programming-model异步simt编程模型&#34;&gt;Asynchronous SIMT Programming Model（异步SIMT编程模型）&lt;/h4&gt;
+&lt;p&gt;指CUDA程序在执行某些耗时操作（如GPU内核执行、内存拷贝等）时，不会等待这些操作完成，而是允许(CPU中)程序继续执行后续的命令或任务。这种机制使得CPU和GPU能够更高效地并行工作，提高了程序的整体性能。所谓异步Asyn,就是指多个设备之间步伐不一致，随便执行。同步Syn是指多个设备间需要步伐一致，当一个设备在运行时，其他设备需要等待它结束，再一起继续往下执行。&lt;/p&gt;
+&lt;h2 id=&#34;compute-capability版本与cuda版本&#34;&gt;Compute Capability版本与CUDA版本&lt;/h2&gt;
+&lt;p&gt;设备的Compute Capability由版本号表示，有时也称其“ SM 版本”。该版本号标识 GPU 硬件支持的特性，并由应用程序在运行时使用，以确定当前GPU上可用的硬件特性和指令。Compute Capability包括一个主要版本号X和一个次要版本号Y，用X.Y表示。CUDA 版本指的是 CUDA软件平台的版本。CUDA平台被应用开发人员用来创建那些可以运行在许多代GPU架构上的应用程序，包括未来尚未发明的 GPU架构。尽管CUDA平台的新版本通常会通过支持新GPU架构的Compute Capability版本来增加对于该架构的本地支持，但 CUDA平台的新版本通常也会包含软件功能，而这些是与硬件独立的。&lt;/p&gt;
+&lt;h2 id=&#34;cuda-runtime&#34;&gt;Cuda Runtime&lt;/h2&gt;
+&lt;p&gt;CUDA Runtime是NVIDIA提供的一个用于简化CUDA编程的高级API，它建立在CUDA Driver API之上，提供了一组更高层次的接口，旨在使开发者更容易使用CUDA进行并行编程。如cudaMalloc和cudaFree函数,允许开发者定义和启动核函数（kernel functions）。&lt;/p&gt;
+&lt;h2 id=&#34;cuda-context&#34;&gt;Cuda Context&lt;/h2&gt;
+&lt;p&gt;CUDA的上下文（Context）是CUDA编程中的一个重要概念，它代表了CUDA运行时（Runtime）与特定CUDA设备（通常是NVIDIA GPU）之间的关联和状态信息。当你使用CUDA Runtime API进行编程时，CUDA运行时会自动为每个CUDA设备创建一个上下文（除非你显式地请求在不同的线程中为每个设备创建独立的上下文）。一个context是为一个进程服务的，该进程内的所有线程共同使用这个context。&lt;/p&gt;
+&lt;h4 id=&#34;primary-context&#34;&gt;primary context&lt;/h4&gt;
+&lt;p&gt;在CUDA编程中，primary context（主上下文）是指与CUDA设备关联的第一个或默认的上下文(自动创建，用户不可见)。这个上下文在CUDA运行时（Runtime）初始化时自动创建，并且通常用于管理该设备上的大部分CUDA操作。它在应用程序的所有主机线程之间共享。、&lt;/p&gt;
+&lt;h2 id=&#34;cuda-stream-cuda流&#34;&gt;Cuda Stream （Cuda流）&lt;/h2&gt;
+&lt;p&gt;一般使用GPU加速，启动GPU内核或内存数据复制(CudaMemcpy)这类GPU操作是按顺序进行的，这实际是因为这些操作是由一个默认的流掌控的，如果想要让GPU的一些操作并发执行，就需要将不同操作放到不同的流上，流内部的操作顺序执行，不同流之间的操作异步执行，这就是流的概念。
+CUDA流指的是由主机发出的在一个设备中执行的CUDA操作序列。一个CUDA流中的各个操作按照主机发布的次序执行；但来自两个不同CUDA流的操作不一定按照某个次序执行，有可能是并发或者交错地执行。可以将流类比成 CPU 编程中的“线程”的概念（注意不是 CUDA 编程概念中的线程）：同一个“线程”中的任务串行执行，不同“线程”可以并行执行。
+默认流可以分为两种：legacy default stream 和 per-thread default stream。&lt;/p&gt;
+&lt;h4 id=&#34;legacy-default-stream&#34;&gt;legacy default stream&lt;/h4&gt;
+&lt;p&gt;默认情况下（无编译选项或者使用 nvcc 编译时加上 &amp;ndash;default-stream legacy 编译选项），每个设备（每张 GPU 卡）会创建一个默认流（NULL 流），称为 legacy default stream，该设备上所有不指定流或者指定默认流的操作全都放到这个流中。如果主机使用多线程，那么多线程的GPU操作，都会放到这个流中，共用这一个流。
+注意：如果主机线程在来自不同流(自定义流)的两个命令之间向 legacy default stream 发出指令，那么这些来自不同流的命令不能同时运行。一句话总结：legacy default stream 会和所有非 non-blocking stream 产生同步。&lt;/p&gt;</description>
+      
+    </item>
+    
+  </channel>
+</rss>
