@@ -285,28 +285,35 @@ x = 1;a = 1;	while (a != 1) ;assert(x == 1);b = 1;	while (b != 1) ;assert(x == 1
 在b=1时也是原子操作，这时是cuda::thread_scope_system系统同步域，所有变量都会被保证更新，但实际上对于Thread3来说，只需要b和x的更新可见即可，那么如果有其他变量由于处在一个同步域也要求被更新，就会导致多余的更新事务，降低性能。
 为解决上述问题，从 Hopper 架构 GPU 和 CUDA 12.0 开始，内存同步域功能提供了一种减轻此类Interference的方法。可以在启动内核时自动配置选择在不同的Memory Synchronization Domains，从而避免不必要的数据同步事件。</p>
 <h2 id="programmatic-dependent-launch-and-synchronization程序化依赖启动与同步">Programmatic Dependent Launch and Synchronization（程序化依赖启动与同步）</h2>
-<p>在常见的流执行过程是一个Kernel完全执行完，接着第二个Kernel执行,因为这两个Kernel之间往往存在依赖，否则可以直接用不同流并行执行。但是实际上第二个Kernel未必所有操作都依赖第一个Kernel的结果，比如Kernel2中的初始化和内存分配过程可以在Kernel1执行时并行完成，从而获得更大的并行度，这就是Programmatic Dependent Launch and Synchronization。cuda为实现这种并行提供了可用的API,可以根据依赖关系自动设定并行区域，简单例子如下:
-<strong>global</strong> void primary_kernel() {
-// Initial work that should finish before starting secondary kernel</p>
-<p>// Trigger the secondary kernel
-cudaTriggerProgrammaticLaunchCompletion();</p>
-<p>// Work that can coincide with the secondary kernel
-}</p>
-<p><strong>global</strong> void secondary_kernel()
-{
-// Independent work</p>
-<p>// Will block until all primary kernels the secondary kernel is dependent on have completed and flushed results to global memory
-cudaGridDependencySynchronize();</p>
-<p>// Dependent work
-}</p>
-<p>cudaLaunchAttribute attribute[1];
-attribute[0].id = cudaLaunchAttributeProgrammaticStreamSerialization;
-attribute[0].val.programmaticStreamSerializationAllowed = 1;
-configSecondary.attrs = attribute;
-configSecondary.numAttrs = 1;</p>
-<p>primary_kernel&laquo;&lt;grid_dim, block_dim, 0, stream&raquo;&gt;();
-cudaLaunchKernelEx(&amp;configSecondary, secondary_kernel);</p>
-<h2 id="cuda-graphs-cuda图">CUDA Graphs CUDA图</h2>
+<p>在常见的流执行过程是一个Kernel完全执行完，接着第二个Kernel执行,因为这两个Kernel之间往往存在依赖，否则可以直接用不同流并行执行。但是实际上第二个Kernel未必所有操作都依赖第一个Kernel的结果，比如Kernel2中的初始化和内存分配过程可以在Kernel1执行时并行完成，从而获得更大的并行度，这就是Programmatic Dependent Launch and Synchronization。cuda为实现这种并行提供了可用的API,可以根据依赖关系自动设定并行区域，简单例子如下：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-c++" data-lang="c++"><span class="line"><span class="cl"><span class="n">__global__</span> <span class="kt">void</span> <span class="nf">primary_kernel</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">   <span class="c1">// Initial work that should finish before starting secondary kernel
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl">   <span class="c1">// Trigger the secondary kernel
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>   <span class="n">cudaTriggerProgrammaticLaunchCompletion</span><span class="p">();</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">   <span class="c1">// Work that can coincide with the secondary kernel
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="n">__global__</span> <span class="kt">void</span> <span class="nf">secondary_kernel</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl"><span class="p">{</span>
+</span></span><span class="line"><span class="cl">   <span class="c1">// Independent work
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl">   <span class="c1">// Will block until all primary kernels the secondary kernel is dependent on have completed and flushed results to global memory
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>   <span class="n">cudaGridDependencySynchronize</span><span class="p">();</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">   <span class="c1">// Dependent work
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="n">cudaLaunchAttribute</span> <span class="n">attribute</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span>
+</span></span><span class="line"><span class="cl"><span class="n">attribute</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">id</span> <span class="o">=</span> <span class="n">cudaLaunchAttributeProgrammaticStreamSerialization</span><span class="p">;</span>
+</span></span><span class="line"><span class="cl"><span class="n">attribute</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">val</span><span class="p">.</span><span class="n">programmaticStreamSerializationAllowed</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+</span></span><span class="line"><span class="cl"><span class="n">configSecondary</span><span class="p">.</span><span class="n">attrs</span> <span class="o">=</span> <span class="n">attribute</span><span class="p">;</span>
+</span></span><span class="line"><span class="cl"><span class="n">configSecondary</span><span class="p">.</span><span class="n">numAttrs</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="n">primary_kernel</span><span class="o">&lt;&lt;&lt;</span><span class="n">grid_dim</span><span class="p">,</span> <span class="n">block_dim</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">stream</span><span class="o">&gt;&gt;&gt;</span><span class="p">();</span>
+</span></span><span class="line"><span class="cl"><span class="n">cudaLaunchKernelEx</span><span class="p">(</span><span class="o">&amp;</span><span class="n">configSecondary</span><span class="p">,</span> <span class="n">secondary_kernel</span><span class="p">);</span>
+</span></span></code></pre></div><h2 id="cuda-graphs-cuda图">CUDA Graphs CUDA图</h2>
 <p>CUDA Graphs 提供了一种在 CUDA 中提交工作的新模型(和Stream一样)。Graphs 由一系列操作构成，例如内核启动等，并通过依赖关系连接，同时图的定义和执行彼此独立。这使得一个 Graphs 可以一次定义，多次启动。将 Graphs 的定义与执行分开可以实现许多优化：首先，与 Stream 相比，因为大部分设置都是提前完成的，故降低了 CPU 的启动成本；其次，Graph 可以将整个工作流呈现给 CUDA ，CUDA 可以对其进行优化，而这对于 Stream的分段工作提交机制来说可能无法实现。</p>
 <p>使用 Graphs 的工作提交分为三个阶段：definition定义、instantiation实例化和execution执行。</p>
 <p>在定义阶段，程序创建 Graph 中操作的描述以及它们之间的依赖关系。</p>
