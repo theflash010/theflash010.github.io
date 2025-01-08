@@ -6,13 +6,68 @@
     <description>Recent content in Posts on NAN blog</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-gb</language>
-    <lastBuildDate>Fri, 03 Jan 2025 14:02:03 +0800</lastBuildDate><atom:link href="https://theflash010.github.io/posts/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Wed, 08 Jan 2025 11:10:08 +0800</lastBuildDate><atom:link href="https://theflash010.github.io/posts/index.xml" rel="self" type="application/rss+xml" />
     <item>
-      <title>CUDA_Study</title>
-      <link>https://theflash010.github.io/posts/cuda_study/</link>
+      <title>Encoder Decoder vs Decoder Only</title>
+      <link>https://theflash010.github.io/posts/encoder-decoder-vs-decoder-only/</link>
+      <pubDate>Wed, 08 Jan 2025 11:10:08 +0800</pubDate>
+      
+      <guid>https://theflash010.github.io/posts/encoder-decoder-vs-decoder-only/</guid>
+      
+      <description>&lt;h1 id=&#34;encoder-decoder--vs--decoder-only&#34;&gt;Encoder-Decoder  VS  Decoder-Only&lt;/h1&gt;
+&lt;h2 id=&#34;markencoder-decodermark&#34;&gt;&lt;mark&gt;Encoder-Decoder&lt;/mark&gt;&lt;/h2&gt;
+&lt;h4 id=&#34;encoder&#34;&gt;Encoder&lt;/h4&gt;
+&lt;p&gt;作用：将输入文本的信息进行提取&lt;/p&gt;
+&lt;p&gt;过程：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;在实现时使用 attention + add&amp;amp;norm + FNN为每一个单词都生成一个Encoder输出e&lt;del&gt;i&lt;/del&gt;(向量数据)&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;注意：e&lt;sub&gt;i&lt;/sub&gt;始终是指Encoder最顶层块的输出结果（如果Encoder有很多块的话）&lt;/p&gt;
+&lt;h4 id=&#34;decoder&#34;&gt;Decoder&lt;/h4&gt;
+&lt;p&gt;作用：利用Encoder的输出向量数据逐个生成结果&lt;/p&gt;
+&lt;p&gt;过程：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;插入一个&amp;lt;bos&amp;gt;字符，表示开始生成&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;假设当前已经推理出n个单词（不包括输入文本！！！），对第n个单词使用Masked Attention，生成第n个单词与前n-1个单词的自注意力分数，并计算出自注意力值d（向量数据），还有add&amp;amp;norm（暂不考虑）&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;将d与Encoder得到的所有输入单词的结果向量e&lt;sub&gt;i&lt;/sub&gt;进行cross attention，每个e&lt;sub&gt;i&lt;/sub&gt;会分别乘M&lt;sub&gt;k&lt;/sub&gt;，M&lt;sub&gt;v&lt;/sub&gt;矩阵，得到k&lt;sub&gt;i&lt;/sub&gt;，v&lt;sub&gt;i&lt;/sub&gt;向量，而d会乘以M&lt;sub&gt;q&lt;/sub&gt;矩阵，得到q&lt;sub&gt;d&lt;/sub&gt;向量，然后k&lt;sub&gt;i&lt;/sub&gt;，v&lt;sub&gt;i&lt;/sub&gt;与q&lt;sub&gt;d&lt;/sub&gt;进行attention计算，得出结果o（向量数据）&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;将o进行add&amp;amp;norm，FNN最后产生新的单词word，重复2，3，4步，直到生成&amp;lt;eos&amp;gt;表示结束生成&lt;/p&gt;
+&lt;p&gt;注意：就算decoder有很多块，每一块中的cross attention中的e&lt;sub&gt;i&lt;/sub&gt;都是一样的，都是Encoder最顶层块的结果&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;注意：就算decoder有很多块，每一块中的cross attention中的e&lt;sub&gt;i&lt;/sub&gt;都是一样的，都是Encoder最顶层块的结果&lt;/p&gt;
+&lt;h4 id=&#34;总结&#34;&gt;总结&lt;/h4&gt;
+&lt;p&gt;Encoder-Decoder架构会使用Encoder进行输入文本的信息提取，然后Decoder每次生成都会使用Encoder提取出的文本信息&lt;/p&gt;
+&lt;h2 id=&#34;markdecoder-onlymark&#34;&gt;&lt;mark&gt;Decoder-Only&lt;/mark&gt;&lt;/h2&gt;
+&lt;h4 id=&#34;decoder-1&#34;&gt;Decoder&lt;/h4&gt;
+&lt;p&gt;作用：不断使用attention来生成结果&lt;/p&gt;
+&lt;p&gt;过程：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;从文本输入首单词开始（注意这里不是插入&amp;lt;bos&amp;gt;），进行masked attention，但是在文本输入结束前的推理word是不会输出的，一直到文本输入最后一个单词开始才会把推理word输出，循环如此，直到生成&amp;lt;eos&amp;gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;tips：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;实际上文本输入不需要推理，只需要计算这些输入单词的KV Cache就可以了，等到文本输入最后一个单词才用进行推理&lt;/li&gt;
+&lt;li&gt;其实Decoder-Only分为两个阶段prefill和decode，其中prefill进行输入文本的KV Cache计算，decode进行推理（先prefill再decode）&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h4 id=&#34;总结-1&#34;&gt;总结&lt;/h4&gt;
+&lt;p&gt;Decoder-Only架构没用Encoder进行输入文本的信息提取，而是直接进行推理，在推理的时候利用masked attention感知前面输入文本的内容，从而实现推理&lt;/p&gt;
+&lt;img src=&#34;https://machinelearningmastery.com/wp-content/uploads/2021/08/attention_research_1-727x1024.png&#34; alt=&#34;img&#34; style=&#34;zoom:50%;&#34; /&gt;</description>
+      
+    </item>
+    
+    <item>
+      <title>CUDA Study</title>
+      <link>https://theflash010.github.io/posts/cuda-study/</link>
       <pubDate>Fri, 03 Jan 2025 14:02:03 +0800</pubDate>
       
-      <guid>https://theflash010.github.io/posts/cuda_study/</guid>
+      <guid>https://theflash010.github.io/posts/cuda-study/</guid>
       
       <description>&lt;h2 id=&#34;heterogeneous-programming异构编程&#34;&gt;Heterogeneous Programming（异构编程）&lt;/h2&gt;
 &lt;p&gt;用非单一架构的机器进行计算的编程模型，例如CPU与GPU融合&lt;/p&gt;

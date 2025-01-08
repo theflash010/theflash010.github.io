@@ -2,16 +2,19 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
+    <loc>https://theflash010.github.io/posts/encoder-decoder-vs-decoder-only/</loc>
+    <lastmod>2025-01-08T11:10:08+08:00</lastmod>
+  </url><url>
+    <loc>https://theflash010.github.io/</loc>
+    <lastmod>2025-01-08T11:10:08+08:00</lastmod>
+  </url><url>
+    <loc>https://theflash010.github.io/posts/</loc>
+    <lastmod>2025-01-08T11:10:08+08:00</lastmod>
+  </url><url>
     <loc>https://theflash010.github.io/about/</loc>
     <lastmod>2025-01-03T14:30:31+08:00</lastmod>
   </url><url>
-    <loc>https://theflash010.github.io/</loc>
-    <lastmod>2025-01-03T14:30:31+08:00</lastmod>
-  </url><url>
-    <loc>https://theflash010.github.io/posts/cuda_study/</loc>
-    <lastmod>2025-01-03T14:02:03+08:00</lastmod>
-  </url><url>
-    <loc>https://theflash010.github.io/posts/</loc>
+    <loc>https://theflash010.github.io/posts/cuda-study/</loc>
     <lastmod>2025-01-03T14:02:03+08:00</lastmod>
   </url><url>
     <loc>https://theflash010.github.io/categories/</loc>
