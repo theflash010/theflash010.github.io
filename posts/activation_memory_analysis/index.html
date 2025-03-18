@@ -53,7 +53,7 @@
         },
         "datePublished": "2025-03-18",
         "description": "",
-        "wordCount":  178 ,
+        "wordCount":  198 ,
         "mainEntityOfPage": "True",
         "dateModified": "2025-03-18",
         "image": {
@@ -74,7 +74,8 @@
     <meta property="og:url" content="https://theflash010.github.io/posts/activation_memory_analysis/">
   <meta property="og:site_name" content="NAN blog">
   <meta property="og:title" content="Activation Memory Analysis">
-  <meta property="og:description" content="分析使用不同模型并行策略，模型训练时激活值的显存占用情况 分析前提
+  <meta property="og:description" content="分析使用不同模型并行策略，模型训练时激活值的显存占用情况 来源论文《REDUCING ACTIVATION RECOMPUTATION IN LARGE TRANSFORMER MODELS》的分析
+分析前提
 Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation. （dropout mask是被包括在里面的） We also assume that the network and the activations are stored in a 16-bit floating point format and therefore each element requires 2 bytes for storage. The only exceptions are the dropout masks which only require a single byte per element. (除了dropout mask是1byte外，其余都是2 bytes) Baseline 不使用任何模型并行策略 上图是一个Transformer架构图，基于这个图分析显存占用情况（单layer）:">
   <meta property="og:locale" content="en_gb">
   <meta property="og:type" content="article">
@@ -87,7 +88,8 @@ Note that “activations” in this paper refers to any tensor that is created i
     
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Activation Memory Analysis">
-  <meta name="twitter:description" content="分析使用不同模型并行策略，模型训练时激活值的显存占用情况 分析前提
+  <meta name="twitter:description" content="分析使用不同模型并行策略，模型训练时激活值的显存占用情况 来源论文《REDUCING ACTIVATION RECOMPUTATION IN LARGE TRANSFORMER MODELS》的分析
+分析前提
 Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation. （dropout mask是被包括在里面的） We also assume that the network and the activations are stored in a 16-bit floating point format and therefore each element requires 2 bytes for storage. The only exceptions are the dropout masks which only require a single byte per element. (除了dropout mask是1byte外，其余都是2 bytes) Baseline 不使用任何模型并行策略 上图是一个Transformer架构图，基于这个图分析显存占用情况（单layer）:">
 
 
@@ -214,11 +216,14 @@ stroke-linejoin="round" class="feather feather-home">
       </ul>
     </li>
     <li><a href="#pptpsp流水并行序列并行张量并行共用">PP+TP+SP（流水并行，序列并行，张量并行共用）</a></li>
+    <li><a href="#full-activation-recomputation">Full Activation Recomputation</a></li>
+    <li><a href="#selective-activation--recomputation">SELECTIVE ACTIVATION  RECOMPUTATION</a></li>
   </ul>
 </nav>
     </details>
             <div class="page-content">
                 <h1 id="分析使用不同模型并行策略模型训练时激活值的显存占用情况">分析使用不同模型并行策略，模型训练时<font color=red>激活值</font>的显存占用情况</h1>
+<p>来源论文<em><strong>《REDUCING ACTIVATION RECOMPUTATION IN LARGE TRANSFORMER  MODELS》</strong></em>的分析</p>
 <p>分析前提</p>
 <ol>
 <li>Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation.           （dropout mask是被包括在里面的）</li>
@@ -280,6 +285,18 @@ stroke-linejoin="round" class="feather feather-home">
 <p>综上，由于开头和结尾对第一阶段带来的额外的显存使用如下</p>
 <img src=".\image-20250318103609264.png" alt="image-20250318103609264" style="zoom:50%;" />
 <p>由于这部分extra的显存占用非常少，可以忽略不计，公式(5)就够用了</p>
+<h2 id="full-activation-recomputation">Full Activation Recomputation</h2>
+<p>每个stage只需要保留输入数据就可以了，所有激活值都重计算（Full）</p>
+<p>由于只有输入数据，所以显存占用量为2bsh</p>
+<h2 id="selective-activation--recomputation">SELECTIVE ACTIVATION  RECOMPUTATION</h2>
+<p>主要思想：选择layer内显存占用大，重计算开销小的部分进行重计算，其余部分的激活值保留</p>
+<p>考虑公式（5）中的34和5as/h，5ash的来源在于attention部分（这一部分计算量相对少），而且这一部分显存占用量在大模型的情况下，增长尤为明显，如下分析：</p>
+<img src=".\image-20250318184334482.png"/>
+<p>所以在5as/h&gt;34的条件下，选择重计算attention部分，保留计算开销大的其余激活值，相对full重计算和其他重计算方案更有道理，效果更好。</p>
+<p>综上，选择性重计算显存占用量为34sbhL/t</p>
+<h1 id="总结">总结</h1>
+<img src=".\image-20250318184741926.png" alt="image-20250318184741926" />
+<img src=".\image-20250318184819543.png" alt="image-20250318184819543" />
 
             </div>
         </article></main>

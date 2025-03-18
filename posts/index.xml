@@ -15,6 +15,7 @@
       <guid>https://theflash010.github.io/posts/activation_memory_analysis/</guid>
       
       <description>&lt;h1 id=&#34;分析使用不同模型并行策略模型训练时激活值的显存占用情况&#34;&gt;分析使用不同模型并行策略，模型训练时&lt;font color=red&gt;激活值&lt;/font&gt;的显存占用情况&lt;/h1&gt;
+&lt;p&gt;来源论文&lt;em&gt;&lt;strong&gt;《REDUCING ACTIVATION RECOMPUTATION IN LARGE TRANSFORMER  MODELS》&lt;/strong&gt;&lt;/em&gt;的分析&lt;/p&gt;
 &lt;p&gt;分析前提&lt;/p&gt;
 &lt;ol&gt;
 &lt;li&gt;Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation.           （dropout mask是被包括在里面的）&lt;/li&gt;
