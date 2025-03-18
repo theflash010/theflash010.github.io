@@ -6,7 +6,26 @@
     <description>Recent content in Posts on NAN blog</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-gb</language>
-    <lastBuildDate>Wed, 08 Jan 2025 11:10:08 +0800</lastBuildDate><atom:link href="https://theflash010.github.io/posts/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 18 Mar 2025 11:53:10 +0800</lastBuildDate><atom:link href="https://theflash010.github.io/posts/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Activation Memory Analysis</title>
+      <link>https://theflash010.github.io/posts/activation-memory-analysis/</link>
+      <pubDate>Tue, 18 Mar 2025 11:53:10 +0800</pubDate>
+      
+      <guid>https://theflash010.github.io/posts/activation-memory-analysis/</guid>
+      
+      <description>&lt;h1 id=&#34;分析使用不同模型并行策略模型训练时激活值的显存占用情况&#34;&gt;分析使用不同模型并行策略，模型训练时**&lt;font color=red&gt;激活值&lt;/font&gt;**的显存占用情况&lt;/h1&gt;
+&lt;p&gt;分析前提&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation.           （dropout mask是被包括在里面的）&lt;/li&gt;
+&lt;li&gt;We also assume that the network and the activations are stored in a 16-bit floating point format and therefore each element requires 2 bytes for storage. The only exceptions are the dropout masks which only require a single byte per element.    (除了dropout mask是1byte外，其余都是2 bytes)&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id=&#34;baseline-不使用任何模型并行策略&#34;&gt;Baseline 不使用任何模型并行策略&lt;/h2&gt;
+&lt;img src=&#34;C:\Users\Legend\AppData\Roaming\Typora\typora-user-images\image-20250317032832928.png&#34; alt=&#34;image-20250317032832928&#34; style=&#34;zoom:50%;&#34; /&gt;
+&lt;p&gt;上图是一个Transformer架构图，基于这个图分析显存占用情况（单layer）:&lt;/p&gt;</description>
+      
+    </item>
+    
     <item>
       <title>Encoder Decoder vs Decoder Only</title>
       <link>https://theflash010.github.io/posts/encoder-decoder-vs-decoder-only/</link>
@@ -15,7 +34,7 @@
       <guid>https://theflash010.github.io/posts/encoder-decoder-vs-decoder-only/</guid>
       
       <description>&lt;h1 id=&#34;encoder-decoder--vs--decoder-only&#34;&gt;Encoder-Decoder  VS  Decoder-Only&lt;/h1&gt;
-&lt;h2 id=&#34;markencoder-decodermark&#34;&gt;&lt;mark&gt;Encoder-Decoder&lt;/mark&gt;&lt;/h2&gt;
+&lt;h2 id=&#34;encoder-decoder&#34;&gt;&lt;mark&gt;Encoder-Decoder&lt;/mark&gt;&lt;/h2&gt;
 &lt;h4 id=&#34;encoder&#34;&gt;Encoder&lt;/h4&gt;
 &lt;p&gt;作用：将输入文本的信息进行提取&lt;/p&gt;
 &lt;p&gt;过程：&lt;/p&gt;
@@ -44,7 +63,7 @@
 &lt;p&gt;注意：就算decoder有很多块，每一块中的cross attention中的e&lt;sub&gt;i&lt;/sub&gt;都是一样的，都是Encoder最顶层块的结果&lt;/p&gt;
 &lt;h4 id=&#34;总结&#34;&gt;总结&lt;/h4&gt;
 &lt;p&gt;Encoder-Decoder架构会使用Encoder进行输入文本的信息提取，然后Decoder每次生成都会使用Encoder提取出的文本信息&lt;/p&gt;
-&lt;h2 id=&#34;markdecoder-onlymark&#34;&gt;&lt;mark&gt;Decoder-Only&lt;/mark&gt;&lt;/h2&gt;
+&lt;h2 id=&#34;decoder-only&#34;&gt;&lt;mark&gt;Decoder-Only&lt;/mark&gt;&lt;/h2&gt;
 &lt;h4 id=&#34;decoder-1&#34;&gt;Decoder&lt;/h4&gt;
 &lt;p&gt;作用：不断使用attention来生成结果&lt;/p&gt;
 &lt;p&gt;过程：&lt;/p&gt;

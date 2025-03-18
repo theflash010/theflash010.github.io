@@ -68,7 +68,7 @@
     </script>
 
 
-<meta name="generator" content="Hugo 0.140.2">
+<meta name="generator" content="Hugo 0.145.0">
 
     
     <meta property="og:url" content="https://theflash010.github.io/posts/encoder-decoder-vs-decoder-only/">
@@ -230,7 +230,7 @@ stroke-linejoin="round" class="feather feather-home">
         <summary><b>Table of Contents</b></summary>
         <nav id="TableOfContents">
   <ul>
-    <li><a href="#markencoder-decodermark"><mark>Encoder-Decoder</mark></a>
+    <li><a href="#encoder-decoder"><mark>Encoder-Decoder</mark></a>
       <ul>
         <li>
           <ul>
@@ -241,7 +241,7 @@ stroke-linejoin="round" class="feather feather-home">
         </li>
       </ul>
     </li>
-    <li><a href="#markdecoder-onlymark"><mark>Decoder-Only</mark></a>
+    <li><a href="#decoder-only"><mark>Decoder-Only</mark></a>
       <ul>
         <li>
           <ul>
@@ -256,7 +256,7 @@ stroke-linejoin="round" class="feather feather-home">
     </details>
             <div class="page-content">
                 <h1 id="encoder-decoder--vs--decoder-only">Encoder-Decoder  VS  Decoder-Only</h1>
-<h2 id="markencoder-decodermark"><mark>Encoder-Decoder</mark></h2>
+<h2 id="encoder-decoder"><mark>Encoder-Decoder</mark></h2>
 <h4 id="encoder">Encoder</h4>
 <p>作用：将输入文本的信息进行提取</p>
 <p>过程：</p>
@@ -285,7 +285,7 @@ stroke-linejoin="round" class="feather feather-home">
 <p>注意：就算decoder有很多块，每一块中的cross attention中的e<sub>i</sub>都是一样的，都是Encoder最顶层块的结果</p>
 <h4 id="总结">总结</h4>
 <p>Encoder-Decoder架构会使用Encoder进行输入文本的信息提取，然后Decoder每次生成都会使用Encoder提取出的文本信息</p>
-<h2 id="markdecoder-onlymark"><mark>Decoder-Only</mark></h2>
+<h2 id="decoder-only"><mark>Decoder-Only</mark></h2>
 <h4 id="decoder-1">Decoder</h4>
 <p>作用：不断使用attention来生成结果</p>
 <p>过程：</p>
