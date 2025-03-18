@@ -9,29 +9,29 @@
     <lastBuildDate>Tue, 18 Mar 2025 11:53:10 +0800</lastBuildDate><atom:link href="https://theflash010.github.io/posts/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Activation Memory Analysis</title>
-      <link>https://theflash010.github.io/posts/activation-memory-analysis/</link>
+      <link>https://theflash010.github.io/posts/activation_memory_analysis/</link>
       <pubDate>Tue, 18 Mar 2025 11:53:10 +0800</pubDate>
       
-      <guid>https://theflash010.github.io/posts/activation-memory-analysis/</guid>
+      <guid>https://theflash010.github.io/posts/activation_memory_analysis/</guid>
       
-      <description>&lt;h1 id=&#34;分析使用不同模型并行策略模型训练时激活值的显存占用情况&#34;&gt;分析使用不同模型并行策略，模型训练时**&lt;font color=red&gt;激活值&lt;/font&gt;**的显存占用情况&lt;/h1&gt;
+      <description>&lt;h1 id=&#34;分析使用不同模型并行策略模型训练时激活值的显存占用情况&#34;&gt;分析使用不同模型并行策略，模型训练时&lt;font color=red&gt;激活值&lt;/font&gt;的显存占用情况&lt;/h1&gt;
 &lt;p&gt;分析前提&lt;/p&gt;
 &lt;ol&gt;
 &lt;li&gt;Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation.           （dropout mask是被包括在里面的）&lt;/li&gt;
 &lt;li&gt;We also assume that the network and the activations are stored in a 16-bit floating point format and therefore each element requires 2 bytes for storage. The only exceptions are the dropout masks which only require a single byte per element.    (除了dropout mask是1byte外，其余都是2 bytes)&lt;/li&gt;
 &lt;/ol&gt;
 &lt;h2 id=&#34;baseline-不使用任何模型并行策略&#34;&gt;Baseline 不使用任何模型并行策略&lt;/h2&gt;
-&lt;img src=&#34;C:\Users\Legend\AppData\Roaming\Typora\typora-user-images\image-20250317032832928.png&#34; alt=&#34;image-20250317032832928&#34; style=&#34;zoom:50%;&#34; /&gt;
+&lt;img src=&#34;.\image-20250317032832928.png&#34; alt=&#34;image-20250317032832928&#34; style=&#34;zoom:50%;&#34; /&gt;
 &lt;p&gt;上图是一个Transformer架构图，基于这个图分析显存占用情况（单layer）:&lt;/p&gt;</description>
       
     </item>
     
     <item>
       <title>Encoder Decoder vs Decoder Only</title>
-      <link>https://theflash010.github.io/posts/encoder-decoder-vs-decoder-only/</link>
+      <link>https://theflash010.github.io/posts/encoder-decoder_vs_decoder-only/</link>
       <pubDate>Wed, 08 Jan 2025 11:10:08 +0800</pubDate>
       
-      <guid>https://theflash010.github.io/posts/encoder-decoder-vs-decoder-only/</guid>
+      <guid>https://theflash010.github.io/posts/encoder-decoder_vs_decoder-only/</guid>
       
       <description>&lt;h1 id=&#34;encoder-decoder--vs--decoder-only&#34;&gt;Encoder-Decoder  VS  Decoder-Only&lt;/h1&gt;
 &lt;h2 id=&#34;encoder-decoder&#34;&gt;&lt;mark&gt;Encoder-Decoder&lt;/mark&gt;&lt;/h2&gt;
@@ -83,10 +83,10 @@
     
     <item>
       <title>CUDA Study</title>
-      <link>https://theflash010.github.io/posts/cuda-study/</link>
+      <link>https://theflash010.github.io/posts/cuda_study/</link>
       <pubDate>Fri, 03 Jan 2025 14:02:03 +0800</pubDate>
       
-      <guid>https://theflash010.github.io/posts/cuda-study/</guid>
+      <guid>https://theflash010.github.io/posts/cuda_study/</guid>
       
       <description>&lt;h2 id=&#34;heterogeneous-programming异构编程&#34;&gt;Heterogeneous Programming（异构编程）&lt;/h2&gt;
 &lt;p&gt;用非单一架构的机器进行计算的编程模型，例如CPU与GPU融合&lt;/p&gt;

@@ -1,13 +1,13 @@
 <!DOCTYPE html>
-<html lang="en-gb"><head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script><meta charset="utf-8">
+<html lang="en-gb"><head><meta charset="utf-8">
 <meta http-equiv="content-type" content="text/html">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title itemprop="name">CUDA_Study | NAN blog</title>
-<meta property="og:title" content="CUDA_Study | NAN blog" />
-<meta name="twitter:title" content="CUDA_Study | NAN blog" />
-<meta itemprop="name" content="CUDA_Study | NAN blog" />
-<meta name="application-name" content="CUDA_Study | NAN blog" />
+<title itemprop="name">CUDA Study | NAN blog</title>
+<meta property="og:title" content="CUDA Study | NAN blog" />
+<meta name="twitter:title" content="CUDA Study | NAN blog" />
+<meta itemprop="name" content="CUDA Study | NAN blog" />
+<meta name="application-name" content="CUDA Study | NAN blog" />
 <meta property="og:site_name" content="NAN blog" />
 
 <meta name="description" content="Record of Learning Journey">
@@ -18,7 +18,7 @@
 <meta property="og:locale" content="en-gb" />
 <meta name="language" content="en-gb" />
 
-  <link rel="alternate" hreflang="en-gb" href="http://localhost:1313/posts/cuda_study/" title="English" />
+  <link rel="alternate" hreflang="en-gb" href="https://theflash010.github.io/posts/cuda_study/" title="English" />
 
 
 
@@ -31,7 +31,7 @@
     <meta property="og:type" content="article" />
     <meta property="og:article:published_time" content=2025-01-03T14:02:03&#43;0800 />
     <meta property="article:published_time" content=2025-01-03T14:02:03&#43;0800 />
-    <meta property="og:url" content="http://localhost:1313/posts/cuda_study/" />
+    <meta property="og:url" content="https://theflash010.github.io/posts/cuda_study/" />
 
     
     <meta property="og:article:author" content="Nan Z" />
@@ -46,7 +46,7 @@
     {
         "@context": "http://schema.org",
         "@type": "Article",
-        "headline": "CUDA_Study",
+        "headline": "CUDA Study",
         "author": {
         "@type": "Person",
         "name": ""
@@ -68,12 +68,12 @@
     </script>
 
 
-<meta name="generator" content="Hugo 0.140.2">
+<meta name="generator" content="Hugo 0.145.0">
 
     
-    <meta property="og:url" content="http://localhost:1313/posts/cuda_study/">
+    <meta property="og:url" content="https://theflash010.github.io/posts/cuda_study/">
   <meta property="og:site_name" content="NAN blog">
-  <meta property="og:title" content="CUDA_Study">
+  <meta property="og:title" content="CUDA Study">
   <meta property="og:description" content="Heterogeneous Programming（异构编程） 用非单一架构的机器进行计算的编程模型，例如CPU与GPU融合
 Asynchronous SIMT Programming Model（异步SIMT编程模型） 指CUDA程序在执行某些耗时操作（如GPU内核执行、内存拷贝等）时，不会等待这些操作完成，而是允许(CPU中)程序继续执行后续的命令或任务。这种机制使得CPU和GPU能够更高效地并行工作，提高了程序的整体性能。所谓异步Asyn,就是指多个设备之间步伐不一致，随便执行。同步Syn是指多个设备间需要步伐一致，当一个设备在运行时，其他设备需要等待它结束，再一起继续往下执行。
 Compute Capability版本与CUDA版本 设备的Compute Capability由版本号表示，有时也称其“ SM 版本”。该版本号标识 GPU 硬件支持的特性，并由应用程序在运行时使用，以确定当前GPU上可用的硬件特性和指令。Compute Capability包括一个主要版本号X和一个次要版本号Y，用X.Y表示。CUDA 版本指的是 CUDA软件平台的版本。CUDA平台被应用开发人员用来创建那些可以运行在许多代GPU架构上的应用程序，包括未来尚未发明的 GPU架构。尽管CUDA平台的新版本通常会通过支持新GPU架构的Compute Capability版本来增加对于该架构的本地支持，但 CUDA平台的新版本通常也会包含软件功能，而这些是与硬件独立的。
@@ -92,7 +92,7 @@ legacy default stream 默认情况下（无编译选项或者使用 nvcc 编译�
     
     
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="CUDA_Study">
+  <meta name="twitter:title" content="CUDA Study">
   <meta name="twitter:description" content="Heterogeneous Programming（异构编程） 用非单一架构的机器进行计算的编程模型，例如CPU与GPU融合
 Asynchronous SIMT Programming Model（异步SIMT编程模型） 指CUDA程序在执行某些耗时操作（如GPU内核执行、内存拷贝等）时，不会等待这些操作完成，而是允许(CPU中)程序继续执行后续的命令或任务。这种机制使得CPU和GPU能够更高效地并行工作，提高了程序的整体性能。所谓异步Asyn,就是指多个设备之间步伐不一致，随便执行。同步Syn是指多个设备间需要步伐一致，当一个设备在运行时，其他设备需要等待它结束，再一起继续往下执行。
 Compute Capability版本与CUDA版本 设备的Compute Capability由版本号表示，有时也称其“ SM 版本”。该版本号标识 GPU 硬件支持的特性，并由应用程序在运行时使用，以确定当前GPU上可用的硬件特性和指令。Compute Capability包括一个主要版本号X和一个次要版本号Y，用X.Y表示。CUDA 版本指的是 CUDA软件平台的版本。CUDA平台被应用开发人员用来创建那些可以运行在许多代GPU架构上的应用程序，包括未来尚未发明的 GPU架构。尽管CUDA平台的新版本通常会通过支持新GPU架构的Compute Capability版本来增加对于该架构的本地支持，但 CUDA平台的新版本通常也会包含软件功能，而这些是与硬件独立的。
@@ -105,7 +105,7 @@ legacy default stream 默认情况下（无编译选项或者使用 nvcc 编译�
 
     
 
-    <link rel="canonical" href="http://localhost:1313/posts/cuda_study/">
+    <link rel="canonical" href="https://theflash010.github.io/posts/cuda_study/">
     <link href="/style.min.2d921c18cf1ec555ffc03d59a8adc211c402c68c930c27d6a0c306ab175a8d09.css" rel="stylesheet">
     <link href="/code-highlight.min.706d31975fec544a864cb7f0d847a73ea55ca1df91bf495fd12a177138d807cf.css" rel="stylesheet">
 
@@ -119,7 +119,7 @@ legacy default stream 默认情况下（无编译选项或者使用 nvcc 编译�
 
 
 
-<link rel="manifest" href="http://localhost:1313/site.webmanifest">
+<link rel="manifest" href="https://theflash010.github.io/site.webmanifest">
 
 <meta name="msapplication-config" content="/browserconfig.xml">
 <meta name="msapplication-TileColor" content="#2d89ef">
@@ -130,14 +130,15 @@ legacy default stream 默认情况下（无编译选项或者使用 nvcc 编译�
 
     
     
+    
 </head>
 <body data-theme = "auto" class="notransition">
 
-<script src="/js/theme.js"></script>
+<script src="/js/theme.min.8961c317c5b88b953fe27525839672c9343f1058ab044696ca225656c8ba2ab0.js" integrity="sha256-iWHDF8W4i5U/4nUlg5ZyyTQ/EFirBEaWyiJWVsi6KrA="></script>
 
 <div class="navbar" role="navigation">
     <nav class="menu" aria-label="Main Navigation">
-        <a href="http://localhost:1313/" class="logo">
+        <a href="https://theflash010.github.io/" class="logo">
             <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" 
 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" 
 stroke-linejoin="round" class="feather feather-home">
@@ -172,7 +173,7 @@ stroke-linejoin="round" class="feather feather-home">
                 </li>
                 
                 <li>
-                    <a class="menu-link " href="/about/">
+                    <a class="menu-link " href="/pages/about/">
                         About
                     </a>
                     
@@ -198,7 +199,7 @@ stroke-linejoin="round" class="feather feather-home">
     <main class="page-content" aria-label="Content">
         <article>
             <header class="header">
-                <h1 class="header-title">CUDA_Study</h1>
+                <h1 class="header-title">CUDA Study</h1>
                 
                 
                 
@@ -394,7 +395,7 @@ Updating Instantiated Graphs更新实例图</p>
 
 
     
-    <script async src="http://localhost:1313/js/main.js" ></script>
+    <script src="https://theflash010.github.io/js/main.min.35f435a5d8eac613c52daa28d8af544a4512337d3e95236e4a4978417b8dcb2f.js" integrity="sha256-NfQ1pdjqxhPFLaoo2K9USkUSM30&#43;lSNuSkl4QXuNyy8="></script>
 
     
 

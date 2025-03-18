@@ -3,11 +3,11 @@
 <meta http-equiv="content-type" content="text/html">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title itemprop="name">Encoder Decoder vs Decoder Only | NAN blog</title>
-<meta property="og:title" content="Encoder Decoder vs Decoder Only | NAN blog" />
-<meta name="twitter:title" content="Encoder Decoder vs Decoder Only | NAN blog" />
-<meta itemprop="name" content="Encoder Decoder vs Decoder Only | NAN blog" />
-<meta name="application-name" content="Encoder Decoder vs Decoder Only | NAN blog" />
+<title itemprop="name">Activation Memory Analysis | NAN blog</title>
+<meta property="og:title" content="Activation Memory Analysis | NAN blog" />
+<meta name="twitter:title" content="Activation Memory Analysis | NAN blog" />
+<meta itemprop="name" content="Activation Memory Analysis | NAN blog" />
+<meta name="application-name" content="Activation Memory Analysis | NAN blog" />
 <meta property="og:site_name" content="NAN blog" />
 
 <meta name="description" content="Record of Learning Journey">
@@ -18,7 +18,7 @@
 <meta property="og:locale" content="en-gb" />
 <meta name="language" content="en-gb" />
 
-  <link rel="alternate" hreflang="en-gb" href="https://theflash010.github.io/posts/encoder-decoder_vs_decoder-only/" title="English" />
+  <link rel="alternate" hreflang="en-gb" href="https://theflash010.github.io/posts/activation_memory_analysis/" title="English" />
 
 
 
@@ -29,9 +29,9 @@
     
 
     <meta property="og:type" content="article" />
-    <meta property="og:article:published_time" content=2025-01-08T11:10:08&#43;0800 />
-    <meta property="article:published_time" content=2025-01-08T11:10:08&#43;0800 />
-    <meta property="og:url" content="https://theflash010.github.io/posts/encoder-decoder_vs_decoder-only/" />
+    <meta property="og:article:published_time" content=2025-03-18T11:53:10&#43;0800 />
+    <meta property="article:published_time" content=2025-03-18T11:53:10&#43;0800 />
+    <meta property="og:url" content="https://theflash010.github.io/posts/activation_memory_analysis/" />
 
     
     <meta property="og:article:author" content="Nan Z" />
@@ -46,16 +46,16 @@
     {
         "@context": "http://schema.org",
         "@type": "Article",
-        "headline": "Encoder Decoder vs Decoder Only",
+        "headline": "Activation Memory Analysis",
         "author": {
         "@type": "Person",
         "name": ""
         },
-        "datePublished": "2025-01-08",
+        "datePublished": "2025-03-18",
         "description": "",
-        "wordCount":  43 ,
+        "wordCount":  178 ,
         "mainEntityOfPage": "True",
-        "dateModified": "2025-01-08",
+        "dateModified": "2025-03-18",
         "image": {
         "@type": "imageObject",
         "url": ""
@@ -71,57 +71,29 @@
 <meta name="generator" content="Hugo 0.145.0">
 
     
-    <meta property="og:url" content="https://theflash010.github.io/posts/encoder-decoder_vs_decoder-only/">
+    <meta property="og:url" content="https://theflash010.github.io/posts/activation_memory_analysis/">
   <meta property="og:site_name" content="NAN blog">
-  <meta property="og:title" content="Encoder Decoder vs Decoder Only">
-  <meta property="og:description" content="Encoder-Decoder VS Decoder-Only Encoder-Decoder Encoder 作用：将输入文本的信息进行提取
-过程：
-在实现时使用 attention &#43; add&amp;norm &#43; FNN为每一个单词都生成一个Encoder输出ei(向量数据) 注意：ei始终是指Encoder最顶层块的输出结果（如果Encoder有很多块的话）
-Decoder 作用：利用Encoder的输出向量数据逐个生成结果
-过程：
-插入一个&lt;bos&gt;字符，表示开始生成
-假设当前已经推理出n个单词（不包括输入文本！！！），对第n个单词使用Masked Attention，生成第n个单词与前n-1个单词的自注意力分数，并计算出自注意力值d（向量数据），还有add&amp;norm（暂不考虑）
-将d与Encoder得到的所有输入单词的结果向量ei进行cross attention，每个ei会分别乘Mk，Mv矩阵，得到ki，vi向量，而d会乘以Mq矩阵，得到qd向量，然后ki，vi与qd进行attention计算，得出结果o（向量数据）
-将o进行add&amp;norm，FNN最后产生新的单词word，重复2，3，4步，直到生成&lt;eos&gt;表示结束生成
-注意：就算decoder有很多块，每一块中的cross attention中的ei都是一样的，都是Encoder最顶层块的结果
-注意：就算decoder有很多块，每一块中的cross attention中的ei都是一样的，都是Encoder最顶层块的结果
-总结 Encoder-Decoder架构会使用Encoder进行输入文本的信息提取，然后Decoder每次生成都会使用Encoder提取出的文本信息
-Decoder-Only Decoder 作用：不断使用attention来生成结果
-过程：
-从文本输入首单词开始（注意这里不是插入&lt;bos&gt;），进行masked attention，但是在文本输入结束前的推理word是不会输出的，一直到文本输入最后一个单词开始才会把推理word输出，循环如此，直到生成&lt;eos&gt; tips：
-实际上文本输入不需要推理，只需要计算这些输入单词的KV Cache就可以了，等到文本输入最后一个单词才用进行推理 其实Decoder-Only分为两个阶段prefill和decode，其中prefill进行输入文本的KV Cache计算，decode进行推理（先prefill再decode） 总结 Decoder-Only架构没用Encoder进行输入文本的信息提取，而是直接进行推理，在推理的时候利用masked attention感知前面输入文本的内容，从而实现推理">
+  <meta property="og:title" content="Activation Memory Analysis">
+  <meta property="og:description" content="分析使用不同模型并行策略，模型训练时激活值的显存占用情况 分析前提
+Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation. （dropout mask是被包括在里面的） We also assume that the network and the activations are stored in a 16-bit floating point format and therefore each element requires 2 bytes for storage. The only exceptions are the dropout masks which only require a single byte per element. (除了dropout mask是1byte外，其余都是2 bytes) Baseline 不使用任何模型并行策略 上图是一个Transformer架构图，基于这个图分析显存占用情况（单layer）:">
   <meta property="og:locale" content="en_gb">
   <meta property="og:type" content="article">
     <meta property="article:section" content="posts">
-    <meta property="article:published_time" content="2025-01-08T11:10:08+08:00">
-    <meta property="article:modified_time" content="2025-01-08T11:10:08+08:00">
+    <meta property="article:published_time" content="2025-03-18T11:53:10+08:00">
+    <meta property="article:modified_time" content="2025-03-18T11:53:10+08:00">
 
 
     
     
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Encoder Decoder vs Decoder Only">
-  <meta name="twitter:description" content="Encoder-Decoder VS Decoder-Only Encoder-Decoder Encoder 作用：将输入文本的信息进行提取
-过程：
-在实现时使用 attention &#43; add&amp;norm &#43; FNN为每一个单词都生成一个Encoder输出ei(向量数据) 注意：ei始终是指Encoder最顶层块的输出结果（如果Encoder有很多块的话）
-Decoder 作用：利用Encoder的输出向量数据逐个生成结果
-过程：
-插入一个&lt;bos&gt;字符，表示开始生成
-假设当前已经推理出n个单词（不包括输入文本！！！），对第n个单词使用Masked Attention，生成第n个单词与前n-1个单词的自注意力分数，并计算出自注意力值d（向量数据），还有add&amp;norm（暂不考虑）
-将d与Encoder得到的所有输入单词的结果向量ei进行cross attention，每个ei会分别乘Mk，Mv矩阵，得到ki，vi向量，而d会乘以Mq矩阵，得到qd向量，然后ki，vi与qd进行attention计算，得出结果o（向量数据）
-将o进行add&amp;norm，FNN最后产生新的单词word，重复2，3，4步，直到生成&lt;eos&gt;表示结束生成
-注意：就算decoder有很多块，每一块中的cross attention中的ei都是一样的，都是Encoder最顶层块的结果
-注意：就算decoder有很多块，每一块中的cross attention中的ei都是一样的，都是Encoder最顶层块的结果
-总结 Encoder-Decoder架构会使用Encoder进行输入文本的信息提取，然后Decoder每次生成都会使用Encoder提取出的文本信息
-Decoder-Only Decoder 作用：不断使用attention来生成结果
-过程：
-从文本输入首单词开始（注意这里不是插入&lt;bos&gt;），进行masked attention，但是在文本输入结束前的推理word是不会输出的，一直到文本输入最后一个单词开始才会把推理word输出，循环如此，直到生成&lt;eos&gt; tips：
-实际上文本输入不需要推理，只需要计算这些输入单词的KV Cache就可以了，等到文本输入最后一个单词才用进行推理 其实Decoder-Only分为两个阶段prefill和decode，其中prefill进行输入文本的KV Cache计算，decode进行推理（先prefill再decode） 总结 Decoder-Only架构没用Encoder进行输入文本的信息提取，而是直接进行推理，在推理的时候利用masked attention感知前面输入文本的内容，从而实现推理">
+  <meta name="twitter:title" content="Activation Memory Analysis">
+  <meta name="twitter:description" content="分析使用不同模型并行策略，模型训练时激活值的显存占用情况 分析前提
+Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation. （dropout mask是被包括在里面的） We also assume that the network and the activations are stored in a 16-bit floating point format and therefore each element requires 2 bytes for storage. The only exceptions are the dropout masks which only require a single byte per element. (除了dropout mask是1byte外，其余都是2 bytes) Baseline 不使用任何模型并行策略 上图是一个Transformer架构图，基于这个图分析显存占用情况（单layer）:">
 
 
     
 
-    <link rel="canonical" href="https://theflash010.github.io/posts/encoder-decoder_vs_decoder-only/">
+    <link rel="canonical" href="https://theflash010.github.io/posts/activation_memory_analysis/">
     <link href="/style.min.2d921c18cf1ec555ffc03d59a8adc211c402c68c930c27d6a0c306ab175a8d09.css" rel="stylesheet">
     <link href="/code-highlight.min.706d31975fec544a864cb7f0d847a73ea55ca1df91bf495fd12a177138d807cf.css" rel="stylesheet">
 
@@ -215,12 +187,12 @@ stroke-linejoin="round" class="feather feather-home">
     <main class="page-content" aria-label="Content">
         <article>
             <header class="header">
-                <h1 class="header-title">Encoder Decoder vs Decoder Only</h1>
+                <h1 class="header-title">Activation Memory Analysis</h1>
                 
                 
                 
                 <div class="post-meta">
-                    <time datetime="2025-01-08T11:10:08&#43;08:00" itemprop="datePublished"> 8 Jan 2025 </time>
+                    <time datetime="2025-03-18T11:53:10&#43;08:00" itemprop="datePublished"> 18 Mar 2025 </time>
                 </div>
                 
             </header>
@@ -230,76 +202,84 @@ stroke-linejoin="round" class="feather feather-home">
         <summary><b>Table of Contents</b></summary>
         <nav id="TableOfContents">
   <ul>
-    <li><a href="#encoder-decoder"><mark>Encoder-Decoder</mark></a>
+    <li><a href="#baseline-不使用任何模型并行策略">Baseline 不使用任何模型并行策略</a></li>
+    <li><a href="#tp张量并行">TP（张量并行）</a>
       <ul>
-        <li>
-          <ul>
-            <li><a href="#encoder">Encoder</a></li>
-            <li><a href="#decoder">Decoder</a></li>
-            <li><a href="#总结">总结</a></li>
-          </ul>
-        </li>
+        <li><a href="#为什么dropout的输入可以并行">为什么Dropout的输入可以并行？</a></li>
       </ul>
     </li>
-    <li><a href="#decoder-only"><mark>Decoder-Only</mark></a>
+    <li><a href="#tpsp张量并行和序列并行共用">TP+SP（张量并行和序列并行共用）</a>
       <ul>
-        <li>
-          <ul>
-            <li><a href="#decoder-1">Decoder</a></li>
-            <li><a href="#总结-1">总结</a></li>
-          </ul>
-        </li>
+        <li><a href="#有关tpsp的通信量问题">有关TP+SP的通信量问题</a></li>
       </ul>
     </li>
+    <li><a href="#pptpsp流水并行序列并行张量并行共用">PP+TP+SP（流水并行，序列并行，张量并行共用）</a></li>
   </ul>
 </nav>
     </details>
             <div class="page-content">
-                <h1 id="encoder-decoder--vs--decoder-only">Encoder-Decoder  VS  Decoder-Only</h1>
-<h2 id="encoder-decoder"><mark>Encoder-Decoder</mark></h2>
-<h4 id="encoder">Encoder</h4>
-<p>作用：将输入文本的信息进行提取</p>
-<p>过程：</p>
+                <h1 id="分析使用不同模型并行策略模型训练时激活值的显存占用情况">分析使用不同模型并行策略，模型训练时<font color=red>激活值</font>的显存占用情况</h1>
+<p>分析前提</p>
 <ol>
-<li>在实现时使用 attention + add&amp;norm + FNN为每一个单词都生成一个Encoder输出e<del>i</del>(向量数据)</li>
+<li>Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation.           （dropout mask是被包括在里面的）</li>
+<li>We also assume that the network and the activations are stored in a 16-bit floating point format and therefore each element requires 2 bytes for storage. The only exceptions are the dropout masks which only require a single byte per element.    (除了dropout mask是1byte外，其余都是2 bytes)</li>
 </ol>
-<p>注意：e<sub>i</sub>始终是指Encoder最顶层块的输出结果（如果Encoder有很多块的话）</p>
-<h4 id="decoder">Decoder</h4>
-<p>作用：利用Encoder的输出向量数据逐个生成结果</p>
-<p>过程：</p>
-<ol>
-<li>
-<p>插入一个&lt;bos&gt;字符，表示开始生成</p>
-</li>
-<li>
-<p>假设当前已经推理出n个单词（不包括输入文本！！！），对第n个单词使用Masked Attention，生成第n个单词与前n-1个单词的自注意力分数，并计算出自注意力值d（向量数据），还有add&amp;norm（暂不考虑）</p>
-</li>
-<li>
-<p>将d与Encoder得到的所有输入单词的结果向量e<sub>i</sub>进行cross attention，每个e<sub>i</sub>会分别乘M<sub>k</sub>，M<sub>v</sub>矩阵，得到k<sub>i</sub>，v<sub>i</sub>向量，而d会乘以M<sub>q</sub>矩阵，得到q<sub>d</sub>向量，然后k<sub>i</sub>，v<sub>i</sub>与q<sub>d</sub>进行attention计算，得出结果o（向量数据）</p>
-</li>
-<li>
-<p>将o进行add&amp;norm，FNN最后产生新的单词word，重复2，3，4步，直到生成&lt;eos&gt;表示结束生成</p>
-<p>注意：就算decoder有很多块，每一块中的cross attention中的e<sub>i</sub>都是一样的，都是Encoder最顶层块的结果</p>
-</li>
-</ol>
-<p>注意：就算decoder有很多块，每一块中的cross attention中的e<sub>i</sub>都是一样的，都是Encoder最顶层块的结果</p>
-<h4 id="总结">总结</h4>
-<p>Encoder-Decoder架构会使用Encoder进行输入文本的信息提取，然后Decoder每次生成都会使用Encoder提取出的文本信息</p>
-<h2 id="decoder-only"><mark>Decoder-Only</mark></h2>
-<h4 id="decoder-1">Decoder</h4>
-<p>作用：不断使用attention来生成结果</p>
-<p>过程：</p>
-<ol>
-<li>从文本输入首单词开始（注意这里不是插入&lt;bos&gt;），进行masked attention，但是在文本输入结束前的推理word是不会输出的，一直到文本输入最后一个单词开始才会把推理word输出，循环如此，直到生成&lt;eos&gt;</li>
-</ol>
-<p>tips：</p>
-<ol>
-<li>实际上文本输入不需要推理，只需要计算这些输入单词的KV Cache就可以了，等到文本输入最后一个单词才用进行推理</li>
-<li>其实Decoder-Only分为两个阶段prefill和decode，其中prefill进行输入文本的KV Cache计算，decode进行推理（先prefill再decode）</li>
-</ol>
-<h4 id="总结-1">总结</h4>
-<p>Decoder-Only架构没用Encoder进行输入文本的信息提取，而是直接进行推理，在推理的时候利用masked attention感知前面输入文本的内容，从而实现推理</p>
-<img src="https://machinelearningmastery.com/wp-content/uploads/2021/08/attention_research_1-727x1024.png" alt="img" style="zoom:50%;" />
+<h2 id="baseline-不使用任何模型并行策略">Baseline 不使用任何模型并行策略</h2>
+<img src=".\image-20250317032832928.png" alt="image-20250317032832928" style="zoom:50%;" />
+<p>上图是一个Transformer架构图，基于这个图分析显存占用情况（单layer）:</p>
+<div style="display: flex;">
+  <div><img src=".\image-20250317033316766.png" alt="image-20250317033316766" style="zoom:70%;" /></div>
+  <div><img src=".\image-20250317033344993.png" alt="image-20250317033344993" style="zoom:70%;" /></div>
+</div>
+<h2 id="tp张量并行">TP（张量并行）</h2>
+<img src=".\image-20250317034346038.png" alt="image-20250317034346038" style="zoom: 80%;" />
+<p>上图是Shoeybi et al., 2019使用TP的架构图，以此来进行分析（单layer，图中f是通信算子）</p>
+<img src=".\image-20250317034525663.png" alt="image-20250317034525663" style="zoom:50%;" />
+<p>公式中</p>
+<p>10 = LayerNorm1输入（2sbh）+ LayerNorm1输出/SelfAttention输入(2sbh) + Dropout1输出(sbh) + LayerNorm2输入（2sbh）+ LayerNorm2输出/Linear2输入(2sbh) + Dropout2输出(sbh)</p>
+<p>除了上述的不可并行张量，其余均可利用张量并行均分到不同设备</p>
+<h3 id="为什么dropout的输入可以并行">为什么Dropout的输入可以并行？</h3>
+<p>因为Dropout的输入实际是Linear的输出，Linear的结果实际上还是由TP均分得出来的，所以是可并行的激活值</p>
+<h2 id="tpsp张量并行和序列并行共用">TP+SP（张量并行和序列并行共用）</h2>
+<img src=".\image-20250317055624127.png" alt="image-20250317055624127" style="zoom:80%;" />
+<p>上图是使用TP+SP的架构图，以此来进行分析（单layer，g是通信算子）</p>
+<p>LayerNorm和Dropout是序列独立的，所以在TP的基础上，使用SP来并行LayerNorm和Dropout，进一步减少激活值的显存占用</p>
+<p>g通信算子=TP中f通信算子+SP中通信算子</p>
+<p>以MLP为例，计算流程如下:</p>
+<table>
+  <tr>
+    <td><img src=".\image-20250317060120843.png" alt="image-20250317060120843" style="zoom:50%;" /></td> 
+    <td><img src=".\image-20250317060943870.png" alt="image-20250317060943870" style="zoom:50%;" /></td>
+    </tr>
+</table>
+<p>公式(3)中上标表示按照什么维度划分</p>
+<p>s:序列  h:隐空间  c:列  r:行</p>
+<p>g是all-gather（正传）reduce-scatter（反传）   g&rsquo;是reduce-scatter（正传） all-gather（反传）</p>
+<p>从公式可以看出使用TP+SP，除了Y是要所有计算节点都完整拥有的，其他激活值都可以分散在计算节点上。</p>
+<p>进一步改进，Y依然分散在不同机器上，在反传时，额外进行一次all-gather操作。all-gather可以和Yi的梯度计算重叠，也就是每个机器上先算现有的Y的一部分，消除延迟影响，等其他机器的Y传过来继续算剩余梯度</p>
+<p>综上，TP+SP的显存占用如下</p>
+<img src=".\image-20250317061558666.png" alt="image-20250317061558666" style="zoom:67%;" />
+<h3 id="有关tpsp的通信量问题">有关TP+SP的通信量问题</h3>
+<p>一次正传反传</p>
+<p>仅使用TP的通信量是2f+2f&rsquo;=4all-reduce</p>
+<p>使用TP+SP=4g+4g&rsquo;=4all-gather+4reduce-scatter</p>
+<p>在ring all_reduce的实现中使用的是all-gather+reduce-scatter，所以实际上TP+SP的通信量和纯TP是相同的</p>
+<h2 id="pptpsp流水并行序列并行张量并行共用">PP+TP+SP（流水并行，序列并行，张量并行共用）</h2>
+<p>不同的流水并行策略，带来的激活值显存占用不同，这里考虑1F1B策略时的显存使用情况</p>
+<p>流水并行存在显存占用不均的问题，stage越靠前需要保留的激活值越多，第一阶段需要保留所有stage的激活值，用于反传计算梯度</p>
+<p>这里使用的b是microbatch size，前面的b是正常的batch size</p>
+<p>假设一共L个layer，有p个stage，仅考虑第一个stage机器的显存使用情况，由于要保存所有stage的激活值，所以公式如下:</p>
+<img src=".\image-20250318100939782.png" alt="image-20250318100939782" style="zoom:50%;" />
+<p>其实就是所有层数（L）*单层显存使用（TP+SP），只是这里的b是microbatch_size</p>
+<p>如图2所示，除了迭代的Transformer块，还包括 开头的Position and word embeddings，dropout；结尾的layer-norm，output layer projection into vocabulary</p>
+<p>Position and word embeddings不需要占用空间</p>
+<p>dropout需要mask空间sbhp/t   （因为有p份mask需要被保存）</p>
+<p>layernorm的输入输出一共2*2sbh/t=4bsh/t</p>
+<p>将layernorm的结果投影为vocabulary，cross entropy loss需要元素为4bytes，所以这部分要 4sbv/t</p>
+<p>由于只考虑第一阶段的显存使用，如果p!=1，那么结尾处的layer-norm，output layer projection into vocabulary就不归第一阶段管</p>
+<p>综上，由于开头和结尾对第一阶段带来的额外的显存使用如下</p>
+<img src=".\image-20250318103609264.png" alt="image-20250318103609264" style="zoom:50%;" />
+<p>由于这部分extra的显存占用非常少，可以忽略不计，公式(5)就够用了</p>
 
             </div>
         </article></main>
