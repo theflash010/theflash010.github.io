@@ -6,7 +6,43 @@
     <description>Recent content in Home on NAN blog</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-gb</language>
-    <lastBuildDate>Tue, 18 Mar 2025 11:53:10 +0800</lastBuildDate><atom:link href="https://theflash010.github.io/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Wed, 19 Mar 2025 14:58:46 +0800</lastBuildDate><atom:link href="https://theflash010.github.io/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Pipeline Parallelism</title>
+      <link>https://theflash010.github.io/posts/pipeline_parallelism/</link>
+      <pubDate>Wed, 19 Mar 2025 14:58:46 +0800</pubDate>
+      
+      <guid>https://theflash010.github.io/posts/pipeline_parallelism/</guid>
+      
+      <description>&lt;h1 id=&#34;pp策略&#34;&gt;PP策略&lt;/h1&gt;
+&lt;h2 id=&#34;naive版本&#34;&gt;Naive版本&lt;/h2&gt;
+&lt;p&gt;naive的做法，一次将一个epoch的所有mini-batch注入流水线中，全部进行完前传后，进行反传。所有mini-batch反传结束后，统一进行梯度更新，这样相当于一个epoch只进行了一次梯度更新，epoch退化成了batch，所以训练效率低下（虽然流水资源利用率高，机器都在运行）&lt;/p&gt;
+&lt;h2 id=&#34;gpipe版本&#34;&gt;GPipe版本&lt;/h2&gt;
+&lt;p&gt;GPipe是在Naive的基础上换成m个mini-batch注入到流水中，也是全部前传后全部反传&lt;/p&gt;
+&lt;p&gt;如下图所示&lt;/p&gt;
+&lt;img src=&#34;.\image-20250319143350643.png&#34; alt=&#34;image-20250319143350643&#34; /&gt;
+&lt;h2 id=&#34;1f1b-版本&#34;&gt;1F1B 版本&lt;/h2&gt;
+&lt;p&gt;来自论文&lt;em&gt;&lt;strong&gt;《PipeDream: Generalized Pipeline Parallelism for DNN Training》&lt;/strong&gt;&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;会将mini-batch不断注入到流水中，边 正传 边 反传更新参数，同时严格要求stage必须交替一次正传一次反传&lt;/p&gt;
+&lt;p&gt;如下图所示&lt;/p&gt;
+&lt;img src=&#34;.\image-20250319143535310.png&#34; alt=&#34;image-20250319143535310&#34; /&gt;
+&lt;p&gt;但是很明显有很多问题&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;例如：当mini-batch2在反传时，mini-batch1已经修改了stage4的参数，那么mini-batch2本身应该按最初的参数进行计算梯度，现在被修改了，很明显不能直接用修改的参数进行反传。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;为了解决上诉问题：1F1B会stash权重，存储不同的权重版本。所以面对mini-batch2的反传，所有stage不仅有最新的参数（由mini-batch1更新而来），还有最初版本的参数，从而支持梯度的计算。&lt;font color=&#39;red&#39;&gt;（对于worker的显存是否会带来非常大的额外开销？？？）&lt;/font&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;例如：当mini-batch2进行反传时，已经进行参数更新，那么mini-batch2的梯度对于模型训练是否还有效果呢？&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;作者表示参数更新变化较慢，就算参数更新了，后面mini-batch的梯度还是对训练有效，做实验效果证明了这一点&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;例如：对于mini-batch5（后续用mb5来代替）来说，正传存在使用权重版本不一致的问题，比如在stage1，mb5用的参数是mb1更新得到的，在stage2，mb2用的参数是mb2更新得到的，这种权重版本不一致是否带来问题&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;作者提出来其他技术来保证权重版本一致，为了解决这个问题，使用了Vertical  Sync，这个方法中一个stage会保留更多的权重版本，mini-batch5在前传的时候，会在不同stage里使用由mini-batch1更新得到的权重，比如stage2会额外保留mini-batch1更新后的权重，以便mini-batch5在前传时版本统一，等到mini-batch5反传结束时，不同stage上有关mini-batch1更新的权重版本就可以删掉了&lt;/p&gt;
+&lt;p&gt;作者表示1F1B的默认语义中，并不包括Vertical  Sync技术，因为这个会带来额外的显存开销，版本不一致可能并不会影响训练效果&lt;/p&gt;</description>
+      
+    </item>
+    
     <item>
       <title>Activation Memory Analysis</title>
       <link>https://theflash010.github.io/posts/activation_memory_analysis/</link>
