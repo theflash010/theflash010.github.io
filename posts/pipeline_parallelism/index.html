@@ -53,7 +53,7 @@
         },
         "datePublished": "2025-03-19",
         "description": "",
-        "wordCount":  40 ,
+        "wordCount":  102 ,
         "mainEntityOfPage": "True",
         "dateModified": "2025-03-19",
         "image": {
@@ -74,12 +74,16 @@
     <meta property="og:url" content="https://theflash010.github.io/posts/pipeline_parallelism/">
   <meta property="og:site_name" content="NAN blog">
   <meta property="og:title" content="Pipeline Parallelism">
-  <meta property="og:description" content="PP策略 Naive版本 naive的做法，一次将一个epoch的所有mini-batch注入流水线中，全部进行完前传后，进行反传。所有mini-batch反传结束后，统一进行梯度更新，这样相当于一个epoch只进行了一次梯度更新，epoch退化成了batch，所以训练效率低下（虽然流水资源利用率高，机器都在运行）
+  <meta property="og:description" content="PP策略 PP的两个要素layer assignment（层划分） 和 scheduling strategy（调度策略）
+这里仅讨论调度策略，每个stage什么时候做前传，什么时候做反传
+流水线刷新（Pipeline Flush）是在 流水线并行（Pipeline Parallelism）中，为了确保所有设备（如 GPU）上的计算和优化器步骤（optimizer steps）同步执行，而采取的一种强制同步机制。（通过增加mirco-batch的数量，在stage数量不变的情况下，单个stage的处理时间变短，最后等待刷新的设备空闲时间短，可以减少流水线刷新的影响）
+Naive版本 naive的做法，一次将一个epoch的所有mini-batch注入流水线中，全部进行完前传后，进行反传。所有mini-batch反传结束后，统一进行梯度更新，这样相当于一个epoch只进行了一次梯度更新，epoch退化成了batch，所以训练效率低下（虽然流水资源利用率高，机器都在运行）
 GPipe版本 GPipe是在Naive的基础上换成m个mini-batch注入到流水中，也是全部前传后全部反传
-存在Pipeline flush问题，在一轮m个mini-batch之后，需要冲刷流水线，为下一轮做准备
+存在Pipeline flush问题，在一轮m个mini-batch之后，需要冲刷流水线，为下一轮做准备（通过增加micro-batch数量来减少流水线刷新影响）
 如下图所示
-1F1B 版本 来自论文《PipeDream: Generalized Pipeline Parallelism for DNN Training》
+1F1B 版本（论文版） 来自论文《PipeDream: Generalized Pipeline Parallelism for DNN Training》
 会将mini-batch不断注入到流水中，边 正传 边 反传更新参数，同时严格要求stage必须交替一次正传一次反传
+不需要进行流水线刷新（除非流水线出问题进行修复时刷新流水线）
 如下图所示
 但是很明显有很多问题
 例如：当mini-batch2在反传时，mini-batch1已经修改了stage4的参数，那么mini-batch2本身应该按最初的参数进行计算梯度，现在被修改了，很明显不能直接用修改的参数进行反传。 为了解决上诉问题：1F1B会stash权重，存储不同的权重版本。所以面对mini-batch2的反传，所有stage不仅有最新的参数（由mini-batch1更新而来），还有最初版本的参数，从而支持梯度的计算。（对于worker的显存是否会带来非常大的额外开销？？？）
@@ -91,7 +95,13 @@ GPipe版本 GPipe是在Naive的基础上换成m个mini-batch注入到流水中�
 考虑最右侧时刻
 stage1中mini-batch5,6,7,8均存在反传依赖，而且需要不同的版本号（5-&gt;1，6-&gt;2，7-&gt;3，5-&gt;4），所以需要保存四个版本权重
 stage4中mini-batch1的反传结束后，无需v0版本的权重，可以删除v0，保留v1，后续mini-batch2的正传也使用的是v1版本的权重，等mini-batch2反传结束，v1又可以删除，保留v2版本权重，从此反复，始终只需要保留一个版本权重
-假设一个完整的模型大小是N，本身流水并行，每个stage的权重是N/p，而从上述分析，每个stage不会保留超过p个版本的权重，所以每个stage显存不大于N，相比于数据并行，每个worker都是N还是有好处的。">
+假设一个完整的模型大小是N，本身流水并行，每个stage的权重是N/p，而从上述分析，每个stage不会保留超过p个版本的权重，所以每个stage显存不大于N，相比于数据并行，每个worker都是N还是有好处的。
+1F1B 版本（工程版） 由于版本权重带来的显存问题，工程上选择在反传时不进行梯度更新，等batch结束时进行同步更新，也就是工程上会使用流水刷新
+如下图所示
+GPipe和1F1B的比较 气泡方面 如果1F1B有pipeline flush（1F1B工程版），其实GPipe和1F1B的气泡时间是一样的，如下图所示
+具体计算公式如下
+但是对于1F1B（论文版）不需要流水线刷新，所以n个batch，GPipe需要刷新n-1次，1F1B不需要，气泡数量因此更少
+显存方面 考虑1F1B（工程版）">
   <meta property="og:locale" content="en_gb">
   <meta property="og:type" content="article">
     <meta property="article:section" content="posts">
@@ -103,12 +113,16 @@ stage4中mini-batch1的反传结束后，无需v0版本的权重，可以删除v
     
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Pipeline Parallelism">
-  <meta name="twitter:description" content="PP策略 Naive版本 naive的做法，一次将一个epoch的所有mini-batch注入流水线中，全部进行完前传后，进行反传。所有mini-batch反传结束后，统一进行梯度更新，这样相当于一个epoch只进行了一次梯度更新，epoch退化成了batch，所以训练效率低下（虽然流水资源利用率高，机器都在运行）
+  <meta name="twitter:description" content="PP策略 PP的两个要素layer assignment（层划分） 和 scheduling strategy（调度策略）
+这里仅讨论调度策略，每个stage什么时候做前传，什么时候做反传
+流水线刷新（Pipeline Flush）是在 流水线并行（Pipeline Parallelism）中，为了确保所有设备（如 GPU）上的计算和优化器步骤（optimizer steps）同步执行，而采取的一种强制同步机制。（通过增加mirco-batch的数量，在stage数量不变的情况下，单个stage的处理时间变短，最后等待刷新的设备空闲时间短，可以减少流水线刷新的影响）
+Naive版本 naive的做法，一次将一个epoch的所有mini-batch注入流水线中，全部进行完前传后，进行反传。所有mini-batch反传结束后，统一进行梯度更新，这样相当于一个epoch只进行了一次梯度更新，epoch退化成了batch，所以训练效率低下（虽然流水资源利用率高，机器都在运行）
 GPipe版本 GPipe是在Naive的基础上换成m个mini-batch注入到流水中，也是全部前传后全部反传
-存在Pipeline flush问题，在一轮m个mini-batch之后，需要冲刷流水线，为下一轮做准备
+存在Pipeline flush问题，在一轮m个mini-batch之后，需要冲刷流水线，为下一轮做准备（通过增加micro-batch数量来减少流水线刷新影响）
 如下图所示
-1F1B 版本 来自论文《PipeDream: Generalized Pipeline Parallelism for DNN Training》
+1F1B 版本（论文版） 来自论文《PipeDream: Generalized Pipeline Parallelism for DNN Training》
 会将mini-batch不断注入到流水中，边 正传 边 反传更新参数，同时严格要求stage必须交替一次正传一次反传
+不需要进行流水线刷新（除非流水线出问题进行修复时刷新流水线）
 如下图所示
 但是很明显有很多问题
 例如：当mini-batch2在反传时，mini-batch1已经修改了stage4的参数，那么mini-batch2本身应该按最初的参数进行计算梯度，现在被修改了，很明显不能直接用修改的参数进行反传。 为了解决上诉问题：1F1B会stash权重，存储不同的权重版本。所以面对mini-batch2的反传，所有stage不仅有最新的参数（由mini-batch1更新而来），还有最初版本的参数，从而支持梯度的计算。（对于worker的显存是否会带来非常大的额外开销？？？）
@@ -120,7 +134,13 @@ GPipe版本 GPipe是在Naive的基础上换成m个mini-batch注入到流水中�
 考虑最右侧时刻
 stage1中mini-batch5,6,7,8均存在反传依赖，而且需要不同的版本号（5-&gt;1，6-&gt;2，7-&gt;3，5-&gt;4），所以需要保存四个版本权重
 stage4中mini-batch1的反传结束后，无需v0版本的权重，可以删除v0，保留v1，后续mini-batch2的正传也使用的是v1版本的权重，等mini-batch2反传结束，v1又可以删除，保留v2版本权重，从此反复，始终只需要保留一个版本权重
-假设一个完整的模型大小是N，本身流水并行，每个stage的权重是N/p，而从上述分析，每个stage不会保留超过p个版本的权重，所以每个stage显存不大于N，相比于数据并行，每个worker都是N还是有好处的。">
+假设一个完整的模型大小是N，本身流水并行，每个stage的权重是N/p，而从上述分析，每个stage不会保留超过p个版本的权重，所以每个stage显存不大于N，相比于数据并行，每个worker都是N还是有好处的。
+1F1B 版本（工程版） 由于版本权重带来的显存问题，工程上选择在反传时不进行梯度更新，等batch结束时进行同步更新，也就是工程上会使用流水刷新
+如下图所示
+GPipe和1F1B的比较 气泡方面 如果1F1B有pipeline flush（1F1B工程版），其实GPipe和1F1B的气泡时间是一样的，如下图所示
+具体计算公式如下
+但是对于1F1B（论文版）不需要流水线刷新，所以n个batch，GPipe需要刷新n-1次，1F1B不需要，气泡数量因此更少
+显存方面 考虑1F1B（工程版）">
 
 
     
@@ -236,26 +256,41 @@ stroke-linejoin="round" class="feather feather-home">
   <ul>
     <li><a href="#naive版本">Naive版本</a></li>
     <li><a href="#gpipe版本">GPipe版本</a></li>
-    <li><a href="#1f1b-版本">1F1B 版本</a>
+    <li><a href="#1f1b-版本论文版">1F1B 版本（论文版）</a>
       <ul>
         <li><a href="#显存开销的讨论">显存开销的讨论</a></li>
       </ul>
     </li>
+    <li><a href="#1f1b-版本工程版">1F1B 版本（工程版）</a>
+      <ul>
+        <li><a href="#gpipe和1f1b的比较">GPipe和1F1B的比较</a>
+          <ul>
+            <li><a href="#气泡方面">气泡方面</a></li>
+            <li><a href="#显存方面">显存方面</a></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+    <li><a href="#1f1b工程版schedule-with-interleaved-stages优化版">1F1B工程版（Schedule with Interleaved Stages优化版）</a></li>
   </ul>
 </nav>
     </details>
             <div class="page-content">
                 <h1 id="pp策略">PP策略</h1>
+<p>PP的两个要素layer assignment（层划分） 和 scheduling strategy（调度策略）</p>
+<p>这里仅讨论调度策略，每个stage什么时候做前传，什么时候做反传</p>
+<p>流水线刷新（Pipeline Flush）是在 流水线并行（Pipeline Parallelism）中，为了确保所有设备（如 GPU）上的计算和优化器步骤（optimizer steps）同步执行，而采取的一种强制同步机制。（通过增加mirco-batch的数量，在stage数量不变的情况下，单个stage的处理时间变短，最后等待刷新的设备空闲时间短，可以减少流水线刷新的影响）</p>
 <h2 id="naive版本">Naive版本</h2>
 <p>naive的做法，一次将一个epoch的所有mini-batch注入流水线中，全部进行完前传后，进行反传。所有mini-batch反传结束后，统一进行梯度更新，这样相当于一个epoch只进行了一次梯度更新，epoch退化成了batch，所以训练效率低下（虽然流水资源利用率高，机器都在运行）</p>
 <h2 id="gpipe版本">GPipe版本</h2>
 <p>GPipe是在Naive的基础上换成m个mini-batch注入到流水中，也是全部前传后全部反传</p>
-<p>存在Pipeline flush问题，在一轮m个mini-batch之后，需要冲刷流水线，为下一轮做准备</p>
+<p>存在Pipeline flush问题，在一轮m个mini-batch之后，需要冲刷流水线，为下一轮做准备（通过增加micro-batch数量来减少流水线刷新影响）</p>
 <p>如下图所示</p>
 <img src=".\image-20250319143350643.png" alt="image-20250319143350643" />
-<h2 id="1f1b-版本">1F1B 版本</h2>
+<h2 id="1f1b-版本论文版">1F1B 版本（论文版）</h2>
 <p>来自论文<em><strong>《PipeDream: Generalized Pipeline Parallelism for DNN Training》</strong></em></p>
 <p>会将mini-batch不断注入到流水中，边 正传 边 反传更新参数，同时严格要求stage必须交替一次正传一次反传</p>
+<p>不需要进行流水线刷新（除非流水线出问题进行修复时刷新流水线）</p>
 <p>如下图所示</p>
 <img src=".\image-20250319143535310.png" alt="image-20250319143535310" />
 <p>但是很明显有很多问题</p>
@@ -280,6 +315,33 @@ stroke-linejoin="round" class="feather feather-home">
 <p>stage4中mini-batch1的反传结束后，无需v0版本的权重，可以删除v0，保留v1，后续mini-batch2的正传也使用的是v1版本的权重，等mini-batch2反传结束，v1又可以删除，保留v2版本权重，从此反复，始终只需要保留一个版本权重</p>
 <p>假设一个完整的模型大小是N，本身流水并行，每个stage的权重是N/p，而从上述分析，每个stage不会保留超过p个版本的权重，所以每个stage显存不大于N，相比于数据并行，每个worker都是N还是有好处的。</p>
 <img src=".\image-20250320100623997.png" alt="image-20250320100623997" />
+<h2 id="1f1b-版本工程版">1F1B 版本（工程版）</h2>
+<p>由于版本权重带来的显存问题，工程上选择在反传时不进行梯度更新，等batch结束时进行同步更新，也就是工程上会使用流水刷新</p>
+<p>如下图所示</p>
+<img src=".\image-20250320173445048.png" alt="image-20250320173445048" />
+<h3 id="gpipe和1f1b的比较">GPipe和1F1B的比较</h3>
+<h4 id="气泡方面">气泡方面</h4>
+<p>如果1F1B有pipeline flush（1F1B工程版），其实GPipe和1F1B的气泡时间是一样的，如下图所示</p>
+<img src=".\image-20250320171443810.png" alt="image-20250320171443810" />
+<p>具体计算公式如下</p>
+<img src=".\image-20250320175154103.png" alt="image-20250320175154103" />
+<p>但是对于1F1B（论文版）不需要流水线刷新，所以n个batch，GPipe需要刷新n-1次，1F1B不需要，气泡数量因此更少</p>
+<h4 id="显存方面">显存方面</h4>
+<p>考虑1F1B（工程版）</p>
+<p>假设一个batch有m个micro-batch</p>
+<p>GPipe是直接注入m个micro-batch，所以每个stage都需要备份m个不同版本的激活值</p>
+<p>1F1B由于严格要求一次正传一次反传，所以可以将in-flight的micro-batch数量控制在p之下，只需要保留p个不同版本的激活值（一般m&gt;p，所以1F1B在显存方面是有很大优势的）</p>
+<p>再考虑1F1B（论文版）</p>
+<p>由于需要额外的权重版本控制，所以会有更大的显存开销，可能还不如GPipe</p>
+<h2 id="1f1b工程版schedule-with-interleaved-stages优化版">1F1B工程版（Schedule with Interleaved Stages优化版）</h2>
+<p>主要思想是在1F1B的基础上，通过增加流水线阶段数量来减少气泡时间</p>
+<p>相比于传统的1F1B对单个连续层进行计算，阶段交错版本的1F1B的每个设备可以对多个不连续的模型块（model chunk）进行计算。例如,如果每个设备之前有 4 个层(即设备 1 有第 1-4 层,设备 2 有第 5-8 层,依此类推),现在可以让每个设备对两个模型块(每个模型块有 2 层)进行计算,即设备 1 有第 1、2、9、10 层;设备 2 有第 3、4、11、12 层,依此类推。通过这个方法,流水线中的每个设备被分配多个流水线阶段(与之前相比,每个流水线阶段的计算量更少，也就是在stage不变的情况下增加了流水线级数)</p>
+<p>如下图所示</p>
+<img src=".\image-20250320174857072.png" alt="image-20250320174857072" style="zoom: 67%;" />
+<p>气泡时间计算如下</p>
+<img src=".\image-20250320175310808.png" alt="image-20250320175310808" />
+<p>v是model chunks的数量</p>
+<p>但是气泡时间减少的收益是由增加v倍的通信开销带来的（可以用一些快速通信设备减少这个代价）</p>
 
             </div>
         </article></main>
