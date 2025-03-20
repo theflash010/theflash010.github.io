@@ -53,7 +53,7 @@
         },
         "datePublished": "2025-03-19",
         "description": "",
-        "wordCount":  30 ,
+        "wordCount":  40 ,
         "mainEntityOfPage": "True",
         "dateModified": "2025-03-19",
         "image": {
@@ -76,6 +76,7 @@
   <meta property="og:title" content="Pipeline Parallelism">
   <meta property="og:description" content="PP策略 Naive版本 naive的做法，一次将一个epoch的所有mini-batch注入流水线中，全部进行完前传后，进行反传。所有mini-batch反传结束后，统一进行梯度更新，这样相当于一个epoch只进行了一次梯度更新，epoch退化成了batch，所以训练效率低下（虽然流水资源利用率高，机器都在运行）
 GPipe版本 GPipe是在Naive的基础上换成m个mini-batch注入到流水中，也是全部前传后全部反传
+存在Pipeline flush问题，在一轮m个mini-batch之后，需要冲刷流水线，为下一轮做准备
 如下图所示
 1F1B 版本 来自论文《PipeDream: Generalized Pipeline Parallelism for DNN Training》
 会将mini-batch不断注入到流水中，边 正传 边 反传更新参数，同时严格要求stage必须交替一次正传一次反传
@@ -84,7 +85,13 @@ GPipe版本 GPipe是在Naive的基础上换成m个mini-batch注入到流水中�
 例如：当mini-batch2在反传时，mini-batch1已经修改了stage4的参数，那么mini-batch2本身应该按最初的参数进行计算梯度，现在被修改了，很明显不能直接用修改的参数进行反传。 为了解决上诉问题：1F1B会stash权重，存储不同的权重版本。所以面对mini-batch2的反传，所有stage不仅有最新的参数（由mini-batch1更新而来），还有最初版本的参数，从而支持梯度的计算。（对于worker的显存是否会带来非常大的额外开销？？？）
 例如：当mini-batch2进行反传时，已经进行参数更新，那么mini-batch2的梯度对于模型训练是否还有效果呢？ 作者表示参数更新变化较慢，就算参数更新了，后面mini-batch的梯度还是对训练有效，做实验效果证明了这一点
 例如：对于mini-batch5（后续用mb5来代替）来说，正传存在使用权重版本不一致的问题，比如在stage1，mb5用的参数是mb1更新得到的，在stage2，mb2用的参数是mb2更新得到的，这种权重版本不一致是否带来问题 作者提出来其他技术来保证权重版本一致，为了解决这个问题，使用了Vertical Sync，这个方法中一个stage会保留更多的权重版本，mini-batch5在前传的时候，会在不同stage里使用由mini-batch1更新得到的权重，比如stage2会额外保留mini-batch1更新后的权重，以便mini-batch5在前传时版本统一，等到mini-batch5反传结束时，不同stage上有关mini-batch1更新的权重版本就可以删掉了
-作者表示1F1B的默认语义中，并不包括Vertical Sync技术，因为这个会带来额外的显存开销，版本不一致可能并不会影响训练效果">
+作者表示1F1B的默认语义中，并不包括Vertical Sync技术，因为这个会带来额外的显存开销，版本不一致可能并不会影响训练效果
+显存开销的讨论 在某一个时刻，每个stage进行Weight stashing的额外显存开销只需要考虑当前存在的反传依赖所需的版本号
+如下图所示
+考虑最右侧时刻
+stage1中mini-batch5,6,7,8均存在反传依赖，而且需要不同的版本号（5-&gt;1，6-&gt;2，7-&gt;3，5-&gt;4），所以需要保存四个版本权重
+stage4中mini-batch1的反传结束后，无需v0版本的权重，可以删除v0，保留v1，后续mini-batch2的正传也使用的是v1版本的权重，等mini-batch2反传结束，v1又可以删除，保留v2版本权重，从此反复，始终只需要保留一个版本权重
+假设一个完整的模型大小是N，本身流水并行，每个stage的权重是N/p，而从上述分析，每个stage不会保留超过p个版本的权重，所以每个stage显存不大于N，相比于数据并行，每个worker都是N还是有好处的。">
   <meta property="og:locale" content="en_gb">
   <meta property="og:type" content="article">
     <meta property="article:section" content="posts">
@@ -98,6 +105,7 @@ GPipe版本 GPipe是在Naive的基础上换成m个mini-batch注入到流水中�
   <meta name="twitter:title" content="Pipeline Parallelism">
   <meta name="twitter:description" content="PP策略 Naive版本 naive的做法，一次将一个epoch的所有mini-batch注入流水线中，全部进行完前传后，进行反传。所有mini-batch反传结束后，统一进行梯度更新，这样相当于一个epoch只进行了一次梯度更新，epoch退化成了batch，所以训练效率低下（虽然流水资源利用率高，机器都在运行）
 GPipe版本 GPipe是在Naive的基础上换成m个mini-batch注入到流水中，也是全部前传后全部反传
+存在Pipeline flush问题，在一轮m个mini-batch之后，需要冲刷流水线，为下一轮做准备
 如下图所示
 1F1B 版本 来自论文《PipeDream: Generalized Pipeline Parallelism for DNN Training》
 会将mini-batch不断注入到流水中，边 正传 边 反传更新参数，同时严格要求stage必须交替一次正传一次反传
@@ -106,7 +114,13 @@ GPipe版本 GPipe是在Naive的基础上换成m个mini-batch注入到流水中�
 例如：当mini-batch2在反传时，mini-batch1已经修改了stage4的参数，那么mini-batch2本身应该按最初的参数进行计算梯度，现在被修改了，很明显不能直接用修改的参数进行反传。 为了解决上诉问题：1F1B会stash权重，存储不同的权重版本。所以面对mini-batch2的反传，所有stage不仅有最新的参数（由mini-batch1更新而来），还有最初版本的参数，从而支持梯度的计算。（对于worker的显存是否会带来非常大的额外开销？？？）
 例如：当mini-batch2进行反传时，已经进行参数更新，那么mini-batch2的梯度对于模型训练是否还有效果呢？ 作者表示参数更新变化较慢，就算参数更新了，后面mini-batch的梯度还是对训练有效，做实验效果证明了这一点
 例如：对于mini-batch5（后续用mb5来代替）来说，正传存在使用权重版本不一致的问题，比如在stage1，mb5用的参数是mb1更新得到的，在stage2，mb2用的参数是mb2更新得到的，这种权重版本不一致是否带来问题 作者提出来其他技术来保证权重版本一致，为了解决这个问题，使用了Vertical Sync，这个方法中一个stage会保留更多的权重版本，mini-batch5在前传的时候，会在不同stage里使用由mini-batch1更新得到的权重，比如stage2会额外保留mini-batch1更新后的权重，以便mini-batch5在前传时版本统一，等到mini-batch5反传结束时，不同stage上有关mini-batch1更新的权重版本就可以删掉了
-作者表示1F1B的默认语义中，并不包括Vertical Sync技术，因为这个会带来额外的显存开销，版本不一致可能并不会影响训练效果">
+作者表示1F1B的默认语义中，并不包括Vertical Sync技术，因为这个会带来额外的显存开销，版本不一致可能并不会影响训练效果
+显存开销的讨论 在某一个时刻，每个stage进行Weight stashing的额外显存开销只需要考虑当前存在的反传依赖所需的版本号
+如下图所示
+考虑最右侧时刻
+stage1中mini-batch5,6,7,8均存在反传依赖，而且需要不同的版本号（5-&gt;1，6-&gt;2，7-&gt;3，5-&gt;4），所以需要保存四个版本权重
+stage4中mini-batch1的反传结束后，无需v0版本的权重，可以删除v0，保留v1，后续mini-batch2的正传也使用的是v1版本的权重，等mini-batch2反传结束，v1又可以删除，保留v2版本权重，从此反复，始终只需要保留一个版本权重
+假设一个完整的模型大小是N，本身流水并行，每个stage的权重是N/p，而从上述分析，每个stage不会保留超过p个版本的权重，所以每个stage显存不大于N，相比于数据并行，每个worker都是N还是有好处的。">
 
 
     
@@ -222,7 +236,11 @@ stroke-linejoin="round" class="feather feather-home">
   <ul>
     <li><a href="#naive版本">Naive版本</a></li>
     <li><a href="#gpipe版本">GPipe版本</a></li>
-    <li><a href="#1f1b-版本">1F1B 版本</a></li>
+    <li><a href="#1f1b-版本">1F1B 版本</a>
+      <ul>
+        <li><a href="#显存开销的讨论">显存开销的讨论</a></li>
+      </ul>
+    </li>
   </ul>
 </nav>
     </details>
@@ -232,6 +250,7 @@ stroke-linejoin="round" class="feather feather-home">
 <p>naive的做法，一次将一个epoch的所有mini-batch注入流水线中，全部进行完前传后，进行反传。所有mini-batch反传结束后，统一进行梯度更新，这样相当于一个epoch只进行了一次梯度更新，epoch退化成了batch，所以训练效率低下（虽然流水资源利用率高，机器都在运行）</p>
 <h2 id="gpipe版本">GPipe版本</h2>
 <p>GPipe是在Naive的基础上换成m个mini-batch注入到流水中，也是全部前传后全部反传</p>
+<p>存在Pipeline flush问题，在一轮m个mini-batch之后，需要冲刷流水线，为下一轮做准备</p>
 <p>如下图所示</p>
 <img src=".\image-20250319143350643.png" alt="image-20250319143350643" />
 <h2 id="1f1b-版本">1F1B 版本</h2>
@@ -253,6 +272,14 @@ stroke-linejoin="round" class="feather feather-home">
 </ul>
 <p>作者提出来其他技术来保证权重版本一致，为了解决这个问题，使用了Vertical  Sync，这个方法中一个stage会保留更多的权重版本，mini-batch5在前传的时候，会在不同stage里使用由mini-batch1更新得到的权重，比如stage2会额外保留mini-batch1更新后的权重，以便mini-batch5在前传时版本统一，等到mini-batch5反传结束时，不同stage上有关mini-batch1更新的权重版本就可以删掉了</p>
 <p>作者表示1F1B的默认语义中，并不包括Vertical  Sync技术，因为这个会带来额外的显存开销，版本不一致可能并不会影响训练效果</p>
+<h3 id="显存开销的讨论">显存开销的讨论</h3>
+<p>在某一个时刻，每个stage进行Weight stashing的额外显存开销只需要考虑当前存在的反传依赖所需的版本号</p>
+<p>如下图所示</p>
+<p>考虑最右侧时刻</p>
+<p>stage1中mini-batch5,6,7,8均存在反传依赖，而且需要不同的版本号（5-&gt;1，6-&gt;2，7-&gt;3，5-&gt;4），所以需要保存四个版本权重</p>
+<p>stage4中mini-batch1的反传结束后，无需v0版本的权重，可以删除v0，保留v1，后续mini-batch2的正传也使用的是v1版本的权重，等mini-batch2反传结束，v1又可以删除，保留v2版本权重，从此反复，始终只需要保留一个版本权重</p>
+<p>假设一个完整的模型大小是N，本身流水并行，每个stage的权重是N/p，而从上述分析，每个stage不会保留超过p个版本的权重，所以每个stage显存不大于N，相比于数据并行，每个worker都是N还是有好处的。</p>
+<img src=".\image-20250320100623997.png" alt="image-20250320100623997" />
 
             </div>
         </article></main>
