@@ -6,7 +6,32 @@
     <description>Recent content in Posts on NAN blog</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-gb</language>
-    <lastBuildDate>Wed, 19 Mar 2025 14:58:46 +0800</lastBuildDate><atom:link href="https://theflash010.github.io/posts/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 21 Mar 2025 15:35:05 +0800</lastBuildDate><atom:link href="https://theflash010.github.io/posts/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Megatron_LM</title>
+      <link>https://theflash010.github.io/posts/megatron_lm/</link>
+      <pubDate>Fri, 21 Mar 2025 15:35:05 +0800</pubDate>
+      
+      <guid>https://theflash010.github.io/posts/megatron_lm/</guid>
+      
+      <description>&lt;h1 id=&#34;megatron_lm中使用的的优化方案&#34;&gt;Megatron_LM中使用的的优化方案&lt;/h1&gt;
+&lt;p&gt;Megatron_LM结合了DP，PP，TP，提出的叫PTD-P策略&lt;/p&gt;
+&lt;p&gt;最外层是DP，然后一个DP内使用PP，一个PP内使用TP&lt;/p&gt;
+&lt;p&gt;如下图所示&lt;/p&gt;
+&lt;img src=&#34;.\image-20250321153637863.png&#34; alt=&#34;image-20250321153637863&#34; /&gt;
+&lt;h2 id=&#34;pp调度方面优化&#34;&gt;PP调度方面优化&lt;/h2&gt;
+&lt;p&gt;使用了interleaved pipeline schedule版本的1F1B，通过增加流水线级数来减少气泡时间，具体可以看&lt;a href=&#34;https://theflash010.github.io/posts/pipeline_parallelism/&#34;&gt;《Pipeline Parallelism》&lt;/a&gt;这篇博客&lt;/p&gt;
+&lt;img src=&#34;.\image-20250321154650026.png&#34; alt=&#34;image-20250321154650026&#34; /&gt;
+&lt;h2 id=&#34;pptp通信方面的优化&#34;&gt;PP+TP通信方面的优化&lt;/h2&gt;
+&lt;p&gt;前置知识：每个PP的stage使用的是DGX服务器（有8个A100），DGX内部GPU的通信是用NVLink的，DGX与外部通信是通过8个IB实现的，IB传输是点对点的，所以一次通信调用最多用一个IB设备，其余7个当然可以同时处理其他的点对点通信，但对于这次的通信调用起不到帮助。此外，Megatron_LM的TP如下&lt;/p&gt;
+&lt;img src=&#34;.\image-20250321154546371.png&#34; alt=&#34;image-20250321154546371&#34; style=&#34;zoom:80%;&#34; /&gt;
+&lt;p&gt;然而，现有的PP+TP中，stage间的通信存在冗余。如下图所示&lt;/p&gt;
+&lt;p&gt;现有的通信流程如下：TP组在执行完上图中MLP部分的Dropout后，每个rank都有完整的结果激活值，然后每个rank都将完整的激活值通过IB发送给下一个stage的DGX中对应的rank（这是跨节点的通信传输），所以其实每个rank使用IB传输都是相同的一份数据，存在冗余&lt;/p&gt;
+&lt;p&gt;Megatron_LM优化了通信方案，让每个rank只传输1/8的数据给另一个stage对应rank结点，然后在下一个stage的内部使用all-gather重组激活值数据，由于stage内部使用的是NVLink，所以可以很快，这样相当于使用8个IB一起传输一份数据，不仅减少了通信量，而且提高了并行度&lt;/p&gt;
+&lt;img src=&#34;.\image-20250321155831934.png&#34; alt=&#34;image-20250321155831934&#34; /&gt;</description>
+      
+    </item>
+    
     <item>
       <title>Pipeline Parallelism</title>
       <link>https://theflash010.github.io/posts/pipeline_parallelism/</link>

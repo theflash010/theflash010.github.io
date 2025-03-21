@@ -3,12 +3,15 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://theflash010.github.io/</loc>
-    <lastmod>2025-03-19T14:58:46+08:00</lastmod>
+    <lastmod>2025-03-21T15:35:05+08:00</lastmod>
   </url><url>
-    <loc>https://theflash010.github.io/posts/pipeline_parallelism/</loc>
-    <lastmod>2025-03-19T14:58:46+08:00</lastmod>
+    <loc>https://theflash010.github.io/posts/megatron_lm/</loc>
+    <lastmod>2025-03-21T15:35:05+08:00</lastmod>
   </url><url>
     <loc>https://theflash010.github.io/posts/</loc>
+    <lastmod>2025-03-21T15:35:05+08:00</lastmod>
+  </url><url>
+    <loc>https://theflash010.github.io/posts/pipeline_parallelism/</loc>
     <lastmod>2025-03-19T14:58:46+08:00</lastmod>
   </url><url>
     <loc>https://theflash010.github.io/posts/activation_memory_analysis/</loc>
