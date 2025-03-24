@@ -6,7 +6,79 @@
     <description>Recent content in Home on NAN blog</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-gb</language>
-    <lastBuildDate>Fri, 21 Mar 2025 15:35:05 +0800</lastBuildDate><atom:link href="https://theflash010.github.io/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 24 Mar 2025 10:39:17 +0800</lastBuildDate><atom:link href="https://theflash010.github.io/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Flash Attention MFU Calcuation</title>
+      <link>https://theflash010.github.io/posts/flash_attention_mfu_calcuation/</link>
+      <pubDate>Mon, 24 Mar 2025 10:39:17 +0800</pubDate>
+      
+      <guid>https://theflash010.github.io/posts/flash_attention_mfu_calcuation/</guid>
+      
+      <description>&lt;h1 id=&#34;计算flash-attention中self-attention部分的mfu&#34;&gt;计算Flash Attention中Self-attention部分的MFU&lt;/h1&gt;
+&lt;p&gt;前置知识&lt;/p&gt;
+&lt;p&gt;模型算力利用率（Model FLOPs Utilization， MFU）和硬件算力利用率（Hardware FLOPs Utilization， HFU）是评估某一模型实现对芯片计算性能利用情况的常用指标&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;模型算力利用率（MFU）是指模型一次前反向计算消耗的矩阵算力与机器算力的&lt;strong&gt;比值&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;硬件算力利用率（HFU）是指考虑重计算后，模型一次前反向计算消耗的矩阵算力与机器算力的&lt;strong&gt;比值&lt;/strong&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;用公式来表达就是 &lt;strong&gt;MFU = model FLOPs per iteration/（GPU单卡算力*卡数*一次迭代时间）&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;机器算力只需通过记录计算花费的时间，查询加速器的峰值算力进行计算&lt;/p&gt;
+&lt;p&gt;FLOPs的计算相对复杂，需要手推公式&lt;/p&gt;
+&lt;h2 id=&#34;flash-attention中self-attention的flops推导&#34;&gt;Flash Attention中Self-attention的FLOPs推导&lt;/h2&gt;
+&lt;p&gt;Flash Attention的主要思想是从HBM拿到一份数据，对这份数据做尽可能多的计算操作（也就是提高&lt;strong&gt;arithmetic intensity&lt;/strong&gt;算术强度），来减少显存传输的开销&lt;/p&gt;
+&lt;p&gt;Flash Attention对于一块数据会进行Q*K&lt;sup&gt;T&lt;/sup&gt;，softmax，score*V这三个操作。传统的Transformer是需要三遍pass，所有数据做完一个操作再做下一个操作，导致更多的显存传输&lt;/p&gt;
+&lt;p&gt;以下对FLOPs进行推导&lt;/p&gt;
+&lt;p&gt;对于使用Tiling的Flash Attention，外循环是Q，内循环是K，V，所以K和V的分块是相同的&lt;/p&gt;
+&lt;p&gt;Flash Attention中不同块的数据可以并行处理（不同Q的数据可以并行，相同Q的需要串行），但是这并不影响总体的FLOPs，因为并行带来的好处是时间减少，实际的计算量并不会减少（除非改变算法）&lt;/p&gt;
+&lt;p&gt;变量符号：&lt;/p&gt;
+&lt;table&gt;
+  &lt;thead&gt;
+      &lt;tr&gt;
+          &lt;th style=&#34;text-align: left&#34;&gt;Name&lt;/th&gt;
+          &lt;th&gt;Variables&lt;/th&gt;
+      &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+      &lt;tr&gt;
+          &lt;td style=&#34;text-align: left&#34;&gt;Batch_size&lt;/td&gt;
+          &lt;td&gt;b&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td style=&#34;text-align: left&#34;&gt;Sequence_len&lt;/td&gt;
+          &lt;td&gt;s&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td style=&#34;text-align: left&#34;&gt;Hidden_size&lt;/td&gt;
+          &lt;td&gt;h&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td style=&#34;text-align: left&#34;&gt;num_heads&lt;/td&gt;
+          &lt;td&gt;n_h&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td style=&#34;text-align: left&#34;&gt;number of tiling of Q&lt;/td&gt;
+          &lt;td&gt;t_q&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;td style=&#34;text-align: left&#34;&gt;number of tiling of K&lt;/td&gt;
+          &lt;td&gt;t_k&lt;/td&gt;
+      &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;首先，input*（W&lt;sub&gt;Q&lt;/sub&gt; W&lt;sub&gt;K&lt;/sub&gt; W&lt;sub&gt;V&lt;/sub&gt; ）-&amp;gt; （Q，K，V） FLOPs_1=3（b，s，h）&lt;em&gt;（h，h）= 3&lt;/em&gt;2bsh&lt;sup&gt;2&lt;/sup&gt;=6bsh&lt;sup&gt;2&lt;/sup&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;做完操作1后，首先多头注意力机制会对Q，K，V进行划分，（b，s，h）-&amp;gt; （n_h，b，s，h/n_h）；接着Flash Attention需要按照t_q，t_k进行分块，Q：（n_h，b，s，h/n_h）-&amp;gt;（t_q，b，n_h，s/t_q，h/n_h），K，V：（n_h，b，s，h/n_h）-&amp;gt;（t_k，b，n_h，s/t_k，h/n_h）。在分块结束后的计算量就是所有块的计算量的累加，所以后面对单个块进行追踪，考虑其FLOPs，按如下所示的计算流程&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+   &lt;img src=&#34;.\image-20250324114222193.png&#34; alt=&#34;image-20250324114222193&#34; /&gt;
+&lt;p&gt;2.1 Q*K&lt;sup&gt;T&lt;/sup&gt;的操作FLOPs_2=（b，n_h，s/t_q，h/n_h）*（b，n_h，s/t_k，h/n_h）&lt;sup&gt;T&lt;/sup&gt;=b*n_h*2（h/n_h）*（s/t_q）*（s/t_k）=2bhs&lt;sup&gt;2&lt;/sup&gt;/（t_q*t_k），操作结束后的矩阵形状为（b，n_h，s/t_q，s/t_k）&lt;/p&gt;
+&lt;p&gt;2.2 选出最大的x的计算量忽略不计，考虑图中计算di的FLOPs_3=2*b*n_h*（s/t_q）*（s/t_k）=2b*n_h*s&lt;sup&gt;2&lt;/sup&gt;/(t_q*t_k)&lt;/p&gt;</description>
+      
+    </item>
+    
     <item>
       <title>Megatron_LM</title>
       <link>https://theflash010.github.io/posts/megatron_lm/</link>
