@@ -67,15 +67,14 @@
 &lt;/table&gt;
 &lt;ol&gt;
 &lt;li&gt;
-&lt;p&gt;首先，input*（W&lt;sub&gt;Q&lt;/sub&gt; W&lt;sub&gt;K&lt;/sub&gt; W&lt;sub&gt;V&lt;/sub&gt; ）-&amp;gt; （Q，K，V） FLOPs_1=3（b，s，h）&lt;em&gt;（h，h）= 3&lt;/em&gt;2bsh&lt;sup&gt;2&lt;/sup&gt;=6bsh&lt;sup&gt;2&lt;/sup&gt;&lt;/p&gt;
+&lt;p&gt;首先，input*（W&lt;sub&gt;Q&lt;/sub&gt; W&lt;sub&gt;K&lt;/sub&gt; W&lt;sub&gt;V&lt;/sub&gt; ）-&amp;gt; （Q，K，V）&lt;/p&gt;
+&lt;p&gt;FLOPs_1=3（b，s，h）*（h，h）= 3*2bsh&lt;sup&gt;2&lt;/sup&gt;=6bsh&lt;sup&gt;2&lt;/sup&gt;&lt;/p&gt;
 &lt;/li&gt;
 &lt;li&gt;
-&lt;p&gt;做完操作1后，首先多头注意力机制会对Q，K，V进行划分，（b，s，h）-&amp;gt; （n_h，b，s，h/n_h）；接着Flash Attention需要按照t_q，t_k进行分块，Q：（n_h，b，s，h/n_h）-&amp;gt;（t_q，b，n_h，s/t_q，h/n_h），K，V：（n_h，b，s，h/n_h）-&amp;gt;（t_k，b，n_h，s/t_k，h/n_h）。在分块结束后的计算量就是所有块的计算量的累加，所以后面对单个块进行追踪，考虑其FLOPs，按如下所示的计算流程&lt;/p&gt;
-&lt;/li&gt;
-&lt;/ol&gt;
-   &lt;img src=&#34;.\image-20250324114222193.png&#34; alt=&#34;image-20250324114222193&#34; /&gt;
-&lt;p&gt;2.1 Q*K&lt;sup&gt;T&lt;/sup&gt;的操作FLOPs_2=（b，n_h，s/t_q，h/n_h）*（b，n_h，s/t_k，h/n_h）&lt;sup&gt;T&lt;/sup&gt;=b*n_h*2（h/n_h）*（s/t_q）*（s/t_k）=2bhs&lt;sup&gt;2&lt;/sup&gt;/（t_q*t_k），操作结束后的矩阵形状为（b，n_h，s/t_q，s/t_k）&lt;/p&gt;
-&lt;p&gt;2.2 选出最大的x的计算量忽略不计，考虑图中计算di的FLOPs_3=2*b*n_h*（s/t_q）*（s/t_k）=2b*n_h*s&lt;sup&gt;2&lt;/sup&gt;/(t_q*t_k)&lt;/p&gt;</description>
+&lt;p&gt;做完操作1后，首先多头注意力机制会对Q，K，V进行划分，（b，s，h）-&amp;gt; （b，n_h，s，h/n_h）；接着Flash Attention需要按照t_q，t_k进行分块，Q：（b，n_h，s，h/n_h）-&amp;gt;（t_q，b，n_h，s/t_q，h/n_h），K，V：（n_h，b，s，h/n_h）-&amp;gt;（t_k，b，n_h，s/t_k，h/n_h）。在分块结束后的计算量就是所有块的计算量的累加，所以后面对单个块进行追踪，考虑其FLOPs，按如下所示的计算流程&lt;/p&gt;
+&lt;img src=&#34;.\image-20250324114222193.png&#34; alt=&#34;image-20250324114222193&#34; /&gt;
+&lt;p&gt;2.1 Q*K&lt;sup&gt;T&lt;/sup&gt;的操作，操作结束后的矩阵形状为（b，n_h，s/t_q，s/t_k）&lt;/p&gt;
+&lt;p&gt;FLOPs_2 =（b，n_h，s/t_q，h/n_h）*（b，n_h，s/t_k，h/n_h）&lt;sup&gt;T&lt;/sup&gt;&lt;/p&gt;</description>
       
     </item>
     

@@ -53,7 +53,7 @@
         },
         "datePublished": "2025-03-24",
         "description": "",
-        "wordCount":  76 ,
+        "wordCount":  96 ,
         "mainEntityOfPage": "True",
         "dateModified": "2025-03-24",
         "image": {
@@ -85,10 +85,11 @@ Flash Attention对于一块数据会进行Q*KT，softmax，score*V这三个操�
 对于使用Tiling的Flash Attention，外循环是Q，内循环是K，V，所以K和V的分块是相同的
 Flash Attention中不同块的数据可以并行处理（不同Q的数据可以并行，相同Q的需要串行），但是这并不影响总体的FLOPs，因为并行带来的好处是时间减少，实际的计算量并不会减少（除非改变算法）
 变量符号：
-Name Variables Batch_size b Sequence_len s Hidden_size h num_heads n_h number of tiling of Q t_q number of tiling of K t_k 首先，input*（WQ WK WV ）-&gt; （Q，K，V） FLOPs_1=3（b，s，h）（h，h）= 32bsh2=6bsh2
-做完操作1后，首先多头注意力机制会对Q，K，V进行划分，（b，s，h）-&gt; （n_h，b，s，h/n_h）；接着Flash Attention需要按照t_q，t_k进行分块，Q：（n_h，b，s，h/n_h）-&gt;（t_q，b，n_h，s/t_q，h/n_h），K，V：（n_h，b，s，h/n_h）-&gt;（t_k，b，n_h，s/t_k，h/n_h）。在分块结束后的计算量就是所有块的计算量的累加，所以后面对单个块进行追踪，考虑其FLOPs，按如下所示的计算流程
-2.1 Q*KT的操作FLOPs_2=（b，n_h，s/t_q，h/n_h）*（b，n_h，s/t_k，h/n_h）T=b*n_h*2（h/n_h）*（s/t_q）*（s/t_k）=2bhs2/（t_q*t_k），操作结束后的矩阵形状为（b，n_h，s/t_q，s/t_k）
-2.2 选出最大的x的计算量忽略不计，考虑图中计算di的FLOPs_3=2*b*n_h*（s/t_q）*（s/t_k）=2b*n_h*s2/(t_q*t_k)">
+Name Variables Batch_size b Sequence_len s Hidden_size h num_heads n_h number of tiling of Q t_q number of tiling of K t_k 首先，input*（WQ WK WV ）-&gt; （Q，K，V）
+FLOPs_1=3（b，s，h）*（h，h）= 3*2bsh2=6bsh2
+做完操作1后，首先多头注意力机制会对Q，K，V进行划分，（b，s，h）-&gt; （b，n_h，s，h/n_h）；接着Flash Attention需要按照t_q，t_k进行分块，Q：（b，n_h，s，h/n_h）-&gt;（t_q，b，n_h，s/t_q，h/n_h），K，V：（n_h，b，s，h/n_h）-&gt;（t_k，b，n_h，s/t_k，h/n_h）。在分块结束后的计算量就是所有块的计算量的累加，所以后面对单个块进行追踪，考虑其FLOPs，按如下所示的计算流程
+2.1 Q*KT的操作，操作结束后的矩阵形状为（b，n_h，s/t_q，s/t_k）
+FLOPs_2 =（b，n_h，s/t_q，h/n_h）*（b，n_h，s/t_k，h/n_h）T">
   <meta property="og:locale" content="en_gb">
   <meta property="og:type" content="article">
     <meta property="article:section" content="posts">
@@ -111,10 +112,11 @@ Flash Attention对于一块数据会进行Q*KT，softmax，score*V这三个操�
 对于使用Tiling的Flash Attention，外循环是Q，内循环是K，V，所以K和V的分块是相同的
 Flash Attention中不同块的数据可以并行处理（不同Q的数据可以并行，相同Q的需要串行），但是这并不影响总体的FLOPs，因为并行带来的好处是时间减少，实际的计算量并不会减少（除非改变算法）
 变量符号：
-Name Variables Batch_size b Sequence_len s Hidden_size h num_heads n_h number of tiling of Q t_q number of tiling of K t_k 首先，input*（WQ WK WV ）-&gt; （Q，K，V） FLOPs_1=3（b，s，h）（h，h）= 32bsh2=6bsh2
-做完操作1后，首先多头注意力机制会对Q，K，V进行划分，（b，s，h）-&gt; （n_h，b，s，h/n_h）；接着Flash Attention需要按照t_q，t_k进行分块，Q：（n_h，b，s，h/n_h）-&gt;（t_q，b，n_h，s/t_q，h/n_h），K，V：（n_h，b，s，h/n_h）-&gt;（t_k，b，n_h，s/t_k，h/n_h）。在分块结束后的计算量就是所有块的计算量的累加，所以后面对单个块进行追踪，考虑其FLOPs，按如下所示的计算流程
-2.1 Q*KT的操作FLOPs_2=（b，n_h，s/t_q，h/n_h）*（b，n_h，s/t_k，h/n_h）T=b*n_h*2（h/n_h）*（s/t_q）*（s/t_k）=2bhs2/（t_q*t_k），操作结束后的矩阵形状为（b，n_h，s/t_q，s/t_k）
-2.2 选出最大的x的计算量忽略不计，考虑图中计算di的FLOPs_3=2*b*n_h*（s/t_q）*（s/t_k）=2b*n_h*s2/(t_q*t_k)">
+Name Variables Batch_size b Sequence_len s Hidden_size h num_heads n_h number of tiling of Q t_q number of tiling of K t_k 首先，input*（WQ WK WV ）-&gt; （Q，K，V）
+FLOPs_1=3（b，s，h）*（h，h）= 3*2bsh2=6bsh2
+做完操作1后，首先多头注意力机制会对Q，K，V进行划分，（b，s，h）-&gt; （b，n_h，s，h/n_h）；接着Flash Attention需要按照t_q，t_k进行分块，Q：（b，n_h，s，h/n_h）-&gt;（t_q，b，n_h，s/t_q，h/n_h），K，V：（n_h，b，s，h/n_h）-&gt;（t_k，b，n_h，s/t_k，h/n_h）。在分块结束后的计算量就是所有块的计算量的累加，所以后面对单个块进行追踪，考虑其FLOPs，按如下所示的计算流程
+2.1 Q*KT的操作，操作结束后的矩阵形状为（b，n_h，s/t_q，s/t_k）
+FLOPs_2 =（b，n_h，s/t_q，h/n_h）*（b，n_h，s/t_k，h/n_h）T">
 
 
     
@@ -286,20 +288,30 @@ stroke-linejoin="round" class="feather feather-home">
 </table>
 <ol>
 <li>
-<p>首先，input*（W<sub>Q</sub> W<sub>K</sub> W<sub>V</sub> ）-&gt; （Q，K，V） FLOPs_1=3（b，s，h）<em>（h，h）= 3</em>2bsh<sup>2</sup>=6bsh<sup>2</sup></p>
+<p>首先，input*（W<sub>Q</sub> W<sub>K</sub> W<sub>V</sub> ）-&gt; （Q，K，V）</p>
+<p>FLOPs_1=3（b，s，h）*（h，h）= 3*2bsh<sup>2</sup>=6bsh<sup>2</sup></p>
 </li>
 <li>
-<p>做完操作1后，首先多头注意力机制会对Q，K，V进行划分，（b，s，h）-&gt; （n_h，b，s，h/n_h）；接着Flash Attention需要按照t_q，t_k进行分块，Q：（n_h，b，s，h/n_h）-&gt;（t_q，b，n_h，s/t_q，h/n_h），K，V：（n_h，b，s，h/n_h）-&gt;（t_k，b，n_h，s/t_k，h/n_h）。在分块结束后的计算量就是所有块的计算量的累加，所以后面对单个块进行追踪，考虑其FLOPs，按如下所示的计算流程</p>
+<p>做完操作1后，首先多头注意力机制会对Q，K，V进行划分，（b，s，h）-&gt; （b，n_h，s，h/n_h）；接着Flash Attention需要按照t_q，t_k进行分块，Q：（b，n_h，s，h/n_h）-&gt;（t_q，b，n_h，s/t_q，h/n_h），K，V：（n_h，b，s，h/n_h）-&gt;（t_k，b，n_h，s/t_k，h/n_h）。在分块结束后的计算量就是所有块的计算量的累加，所以后面对单个块进行追踪，考虑其FLOPs，按如下所示的计算流程</p>
+<img src=".\image-20250324114222193.png" alt="image-20250324114222193" />
+<p>2.1 Q*K<sup>T</sup>的操作，操作结束后的矩阵形状为（b，n_h，s/t_q，s/t_k）</p>
+<p>FLOPs_2 =（b，n_h，s/t_q，h/n_h）*（b，n_h，s/t_k，h/n_h）<sup>T</sup></p>
+<p>​	       = b*n_h*2（h/n_h）*（s/t_q）*（s/t_k）</p>
+<p>​		= 2bhs<sup>2</sup>/（t_q*t_k）</p>
+<p>2.2 选出最大的x的计算量忽略不计，考虑图中计算di的FLOPs（和传统的softmax操作一样）</p>
+<p>FLOPs_3 = 2*b*n_h*（s/t_q）*（s/t_k）</p>
+<p>​		= 2b*n_h*s<sup>2</sup>/（t_q*t_k）</p>
+<p>2.3 考虑图中计算oi的FLOPs</p>
+<p>FLOPs_4 =（前一部分忽略）（b，n_h，s/t_q，s/t_k）*（b，n_h，s/t_k，h/n_h）<sup>T</sup></p>
+<p>​		=b*n_h*2（h/n_h）*（s/t_q）*（s/t_k）</p>
+<p>​		=2bhs<sup>2</sup>/（t_q*t_k）</p>
+</li>
+<li>
+<p>在2中的计算仅仅是一个块的FLOPs，需要乘以（t_q*t_k）倍，所以总的计算公式</p>
+<p>FLOPs=FLOPs_1+（t_q*t_k）*(FLOPs_2+FLOPs_3+FLOPs_4)=<font color="red">6bsh<sup>2</sup>+4bhs<sup>2</sup>+2bs<sup>2</sup>n_h </font></p>
 </li>
 </ol>
-   <img src=".\image-20250324114222193.png" alt="image-20250324114222193" />
-<p>2.1 Q*K<sup>T</sup>的操作FLOPs_2=（b，n_h，s/t_q，h/n_h）*（b，n_h，s/t_k，h/n_h）<sup>T</sup>=b*n_h*2（h/n_h）*（s/t_q）*（s/t_k）=2bhs<sup>2</sup>/（t_q*t_k），操作结束后的矩阵形状为（b，n_h，s/t_q，s/t_k）</p>
-<p>2.2 选出最大的x的计算量忽略不计，考虑图中计算di的FLOPs_3=2*b*n_h*（s/t_q）*（s/t_k）=2b*n_h*s<sup>2</sup>/(t_q*t_k)</p>
-<p>2.3 考虑图中计算oi的FLOPs_4=（前一部分忽略）（b，n_h，s/t_q，s/t_k）*（b，n_h，s/t_k，h/n_h）<sup>T</sup> =b*n_h*2（h/n_h）*（s/t_q）*（s/t_k）=2bhs<sup>2</sup>*（t_q*t_k）</p>
-<ol start="3">
-<li>（2）中仅仅是一个块的FLOPs，需要乘以（t_q*t_k）倍，所以总的计算公式FLOPs=FLOPs_1+（t_q*t_k）*(FLOPs_2+FLOPs_3+FLOPs_4)=<font color="red">6bsh<sup>2</sup>+4bhs<sup>2</sup>+2bs<sup>2</sup>n_h </font></li>
-</ol>
-<p>综上，Flash Attention的Self-attention部分的FLOPs=<font color="red">6bsh<sup>2</sup>+4bhs<sup>2</sup>+2bs<sup>2</sup>n_h </font></p>
+<p>综上，Flash Attention的Self-attention部分的FLOPs=<strong><font color="red">6bsh<sup>2</sup>+4bhs<sup>2</sup>+2bs<sup>2</sup>n_h </font></strong></p>
 
             </div>
         </article></main>
