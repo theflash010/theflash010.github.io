@@ -53,7 +53,7 @@
         },
         "datePublished": "2025-03-18",
         "description": "",
-        "wordCount":  198 ,
+        "wordCount":  202 ,
         "mainEntityOfPage": "True",
         "dateModified": "2025-03-18",
         "image": {
@@ -75,8 +75,12 @@
   <meta property="og:site_name" content="NAN blog">
   <meta property="og:title" content="Activation Memory Analysis">
   <meta property="og:description" content="分析使用不同模型并行策略，模型训练时激活值的显存占用情况 来源论文《REDUCING ACTIVATION RECOMPUTATION IN LARGE TRANSFORMER MODELS》的分析
-分析前提
-Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation. （dropout mask是被包括在里面的） We also assume that the network and the activations are stored in a 16-bit floating point format and therefore each element requires 2 bytes for storage. The only exceptions are the dropout masks which only require a single byte per element. (除了dropout mask是1byte外，其余都是2 bytes) Baseline 不使用任何模型并行策略 上图是一个Transformer架构图，基于这个图分析显存占用情况（单layer）:">
+大模型训练时包括两部分变量：需要保存的变量和不需保存的变量
+需要保持的变量包括两部分：权重和激活值
+权重在这里包括模型本身权重，梯度，优化器状态
+激活值是反向传播中需要的部分，反向传播不需要的部分不算激活值，dropout mask是被包括在里面的
+前置知识：
+Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation. We also assume that the network and the activations are stored in a 16-bit floating point format and therefore each element requires 2 bytes for storage. The only exceptions are the dropout masks which only require a single byte per element. (除了dropout mask是1byte外，其余都是2 bytes) Baseline 不使用任何模型并行策略 上图是一个Transformer架构图，基于这个图分析显存占用情况（单layer）:">
   <meta property="og:locale" content="en_gb">
   <meta property="og:type" content="article">
     <meta property="article:section" content="posts">
@@ -89,8 +93,12 @@ Note that “activations” in this paper refers to any tensor that is created i
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Activation Memory Analysis">
   <meta name="twitter:description" content="分析使用不同模型并行策略，模型训练时激活值的显存占用情况 来源论文《REDUCING ACTIVATION RECOMPUTATION IN LARGE TRANSFORMER MODELS》的分析
-分析前提
-Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation. （dropout mask是被包括在里面的） We also assume that the network and the activations are stored in a 16-bit floating point format and therefore each element requires 2 bytes for storage. The only exceptions are the dropout masks which only require a single byte per element. (除了dropout mask是1byte外，其余都是2 bytes) Baseline 不使用任何模型并行策略 上图是一个Transformer架构图，基于这个图分析显存占用情况（单layer）:">
+大模型训练时包括两部分变量：需要保存的变量和不需保存的变量
+需要保持的变量包括两部分：权重和激活值
+权重在这里包括模型本身权重，梯度，优化器状态
+激活值是反向传播中需要的部分，反向传播不需要的部分不算激活值，dropout mask是被包括在里面的
+前置知识：
+Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation. We also assume that the network and the activations are stored in a 16-bit floating point format and therefore each element requires 2 bytes for storage. The only exceptions are the dropout masks which only require a single byte per element. (除了dropout mask是1byte外，其余都是2 bytes) Baseline 不使用任何模型并行策略 上图是一个Transformer架构图，基于这个图分析显存占用情况（单layer）:">
 
 
     
@@ -224,9 +232,13 @@ stroke-linejoin="round" class="feather feather-home">
             <div class="page-content">
                 <h1 id="分析使用不同模型并行策略模型训练时激活值的显存占用情况">分析使用不同模型并行策略，模型训练时<font color=red>激活值</font>的显存占用情况</h1>
 <p>来源论文<em><strong>《REDUCING ACTIVATION RECOMPUTATION IN LARGE TRANSFORMER  MODELS》</strong></em>的分析</p>
-<p>分析前提</p>
+<p>大模型训练时包括两部分变量：需要保存的变量和不需保存的变量</p>
+<p>需要保持的变量包括两部分：权重和激活值</p>
+<p>权重在这里包括模型本身权重，梯度，优化器状态</p>
+<p>激活值是反向传播中需要的部分，反向传播不需要的部分不算激活值，dropout mask是被包括在里面的</p>
+<p>前置知识：</p>
 <ol>
-<li>Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation.           （dropout mask是被包括在里面的）</li>
+<li>Note that “activations” in this paper refers to any tensor that is created in the forward pass and is necessary for gradient computation during back-propagation. As a result, this excludes the main parameters of the model and optimizer state, but, for example, includes the mask used by the dropout operation.</li>
 <li>We also assume that the network and the activations are stored in a 16-bit floating point format and therefore each element requires 2 bytes for storage. The only exceptions are the dropout masks which only require a single byte per element.    (除了dropout mask是1byte外，其余都是2 bytes)</li>
 </ol>
 <h2 id="baseline-不使用任何模型并行策略">Baseline 不使用任何模型并行策略</h2>
@@ -271,14 +283,14 @@ stroke-linejoin="round" class="feather feather-home">
 <p>在ring all_reduce的实现中使用的是all-gather+reduce-scatter，所以实际上TP+SP的通信量和纯TP是相同的</p>
 <h2 id="pptpsp流水并行序列并行张量并行共用">PP+TP+SP（流水并行，序列并行，张量并行共用）</h2>
 <p>不同的流水并行策略，带来的激活值显存占用不同，这里考虑1F1B策略时的显存使用情况</p>
-<p>流水并行存在显存占用不均的问题，stage越靠前需要保留的激活值越多，第一阶段需要保留所有stage的激活值，用于反传计算梯度</p>
+<p>流水并行存在显存占用不均的问题，stage越靠前需要保留的激活值越多，第一阶段需要保留所有in-flight的micro-batch数量的激活值，用于反传计算梯度（假设in-flght的micro-batch数量为q，第i个阶段需要保留的激活值的最大值是  <strong>（单个micro-batch的激活值显存占用量）*（q-i+1）</strong>）</p>
 <p>这里使用的b是microbatch size，前面的b是正常的batch size</p>
 <p>假设一共L个layer，有p个stage，仅考虑第一个stage机器的显存使用情况，由于要保存所有stage的激活值，所以公式如下:</p>
 <img src=".\image-20250318100939782.png" alt="image-20250318100939782" style="zoom:50%;" />
 <p>其实就是所有层数（L）*单层显存使用（TP+SP），只是这里的b是microbatch_size</p>
 <p>如图2所示，除了迭代的Transformer块，还包括 开头的Position and word embeddings，dropout；结尾的layer-norm，output layer projection into vocabulary</p>
 <p>Position and word embeddings不需要占用空间</p>
-<p>dropout需要mask空间sbhp/t   （因为有p份mask需要被保存）</p>
+<p>dropout需要mask空间sbhp/t   （这里的p本身是q（流水线中最大的in-flight的micro-batch的数量），但由于考虑的是1F1B流水线，1F1B的特点就是最大的in-flight的micro-batch数量q为流水线阶段数p，也就是q=p）</p>
 <p>layernorm的输入输出一共2*2sbh/t=4bsh/t</p>
 <p>将layernorm的结果投影为vocabulary，cross entropy loss需要元素为4bytes，所以这部分要 4sbv/t</p>
 <p>由于只考虑第一阶段的显存使用，如果p!=1，那么结尾处的layer-norm，output layer projection into vocabulary就不归第一阶段管</p>
