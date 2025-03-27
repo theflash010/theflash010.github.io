@@ -6,7 +6,32 @@
     <description>Recent content in Posts on NAN blog</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-gb</language>
-    <lastBuildDate>Mon, 24 Mar 2025 10:39:17 +0800</lastBuildDate><atom:link href="https://theflash010.github.io/posts/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Thu, 27 Mar 2025 14:32:49 +0800</lastBuildDate><atom:link href="https://theflash010.github.io/posts/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>LLM Scheduling</title>
+      <link>https://theflash010.github.io/posts/llm-scheduling/</link>
+      <pubDate>Thu, 27 Mar 2025 14:32:49 +0800</pubDate>
+      
+      <guid>https://theflash010.github.io/posts/llm-scheduling/</guid>
+      
+      <description>&lt;h1 id=&#34;有关大模型任务调度的讨论&#34;&gt;有关大模型任务调度的讨论&lt;/h1&gt;
+&lt;p&gt;大模型具有一些内在的特性，导致在大模型任务调度方面会有一些新的挑战。&lt;/p&gt;
+&lt;h2 id=&#34;冷启动问题&#34;&gt;冷启动问题&lt;/h2&gt;
+&lt;p&gt;大模型的特点之一是参数规模非常大，常见的175B,670B等等。&lt;/p&gt;
+&lt;p&gt;当系统的请求量变化时，需要针对集群开发新的调度策略，其中就包括改变集群中不同模型副本的数量，也就是进行&lt;strong&gt;扩缩容&lt;/strong&gt;操作。然而由于大模型的参数规模大，导致在gpu上加载新模型的开销非常大，甚至对于大多数大模型来说，单张gpu无法达到推理的显存需求，需要在好几张gpu上加载大模型，进一步导致大模型的冷启动问题。不同参数规模的大模型加载开销不同，但基本都要超过10分钟的开销。&lt;/p&gt;
+&lt;p&gt;针对大模型的冷启动问题常用的解决思路如下&lt;/p&gt;
+&lt;h3 id=&#34;预测流派&#34;&gt;预测流派&lt;/h3&gt;
+&lt;p&gt;调度的根本原因在于系统请求量的变化，预测流派使用EWMA，ARIMA等方法&lt;font color=&#39;red&#39;&gt;粗粒度&lt;/font&gt;的提前预测下一时段的系统请求量，并提前计算好新的调度策略。&lt;/p&gt;
+&lt;p&gt;&lt;font color=&#39;red&#39;&gt;粗粒度&lt;/font&gt;是按照小时来作为时间段的单位，预测下一时段（几个小时）的请求量是多少，然后在下一个时段中慢慢进行模型的加载（因为相比于小时，10min还是比较短的时间）。由于是提前预测好，并不是系统突然的请求量burst，所以可以消除冷启动带来的影响（等到请求量增大时，已经提前加载好了大模型）&lt;/p&gt;
+&lt;p&gt;预测流派需要对系统请求量的变化有相对准确的预测，如果不准确会导致资源的浪费（多加载了大模型）/SLO 冲突（少加载了大模型）&lt;/p&gt;
+&lt;p&gt;相关文献&lt;em&gt;&lt;strong&gt;《Serving Models, Fast and Slow:Optimizing Heterogeneous LLM Inferencing Workloads at Scale》&lt;/strong&gt;&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;这个paper中还详细讨论了在下一个时段中慢慢进行模型加载的策略&lt;/p&gt;
+&lt;p&gt;Naive方法：在得出新的调度策略后，直接进行改变&lt;/p&gt;
+&lt;p&gt;Instance Utilization (LT-U)方法：考虑模型实例的使用率，当使用率增大超过某一个阈值时按照新的调度策略逐渐加载新的模型副本，但是不可以超过调度策略规定的值，相反，当使用率减少低于某一个阈值时按照新的调度策略逐渐卸载新的模型副本，但是不可以低于调度策略规定的值&lt;/p&gt;
+&lt;p&gt;Instance utilization and ARIMA gap (LT-UA)方法：考虑模型实例的使用率，当使用率增大超过某一个阈值时按照新的调度策略逐渐加载新的模型副本，可以超过调度策略规定的值，相反，当使用率减少低于某一个阈值时按照新的调度策略逐渐卸载新的模型副本，可以低于调度策略规定的值。这个策略可以在预测不准的情况下，更智能的进行扩缩容&lt;/p&gt;</description>
+      
+    </item>
+    
     <item>
       <title>Flash Attention MFU Calcuation</title>
       <link>https://theflash010.github.io/posts/flash_attention_mfu_calcuation/</link>
