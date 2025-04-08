@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+<html lang="en-gb"><head><meta charset="utf-8">
+<meta http-equiv="content-type" content="text/html">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title itemprop="name">VLLM | NAN blog</title>
+<meta property="og:title" content="VLLM | NAN blog" />
+<meta name="twitter:title" content="VLLM | NAN blog" />
+<meta itemprop="name" content="VLLM | NAN blog" />
+<meta name="application-name" content="VLLM | NAN blog" />
+<meta property="og:site_name" content="NAN blog" />
+
+<meta name="description" content="Record of Learning Journey">
+<meta itemprop="description" content="Record of Learning Journey" />
+<meta property="og:description" content="Record of Learning Journey" />
+<meta name="twitter:description" content="Record of Learning Journey" />
+
+<meta property="og:locale" content="en-gb" />
+<meta name="language" content="en-gb" />
+
+  <link rel="alternate" hreflang="en-gb" href="https://theflash010.github.io/posts/vllm/" title="English" />
+
+
+
+
+
+    
+    
+    
+
+    <meta property="og:type" content="article" />
+    <meta property="og:article:published_time" content=2025-04-08T10:04:58&#43;0800 />
+    <meta property="article:published_time" content=2025-04-08T10:04:58&#43;0800 />
+    <meta property="og:url" content="https://theflash010.github.io/posts/vllm/" />
+
+    
+    <meta property="og:article:author" content="Nan Z" />
+    <meta property="article:author" content="Nan Z" />
+    <meta name="author" content="Nan Z" />
+    
+    
+
+    
+
+    <script defer type="application/ld+json">
+    {
+        "@context": "http://schema.org",
+        "@type": "Article",
+        "headline": "VLLM",
+        "author": {
+        "@type": "Person",
+        "name": ""
+        },
+        "datePublished": "2025-04-08",
+        "description": "",
+        "wordCount":  2891 ,
+        "mainEntityOfPage": "True",
+        "dateModified": "2025-04-08",
+        "image": {
+        "@type": "imageObject",
+        "url": ""
+        },
+        "publisher": {
+        "@type": "Organization",
+        "name": "NAN blog"
+        }
+    }
+    </script>
+
+
+<meta name="generator" content="Hugo 0.145.0">
+
+    
+    <meta property="og:url" content="https://theflash010.github.io/posts/vllm/">
+  <meta property="og:site_name" content="NAN blog">
+  <meta property="og:title" content="VLLM">
+  <meta property="og:description" content="VLLM推理框架 VLLM Engine四个组件 1. Tokenizer 2. Processor (convert Inputs –&gt; EngineCoreRequests) Engine中Processor的定义代码如下：
+self.processor = Processor(vllm_config=vllm_config, tokenizer=self.tokenizer, #processor需要tokenizer input_registry=input_registry, mm_registry=mm_registry) Processor的主要操作代码如下：将输入prompt转变成EngineCoreRequests
+def process_inputs( self, #processor类 request_id: str, prompt: PromptType, params: Union[SamplingParams, PoolingParams], arrival_time: Optional[float] = None, lora_request: Optional[LoRARequest] = None, trace_headers: Optional[Mapping[str, str]] = None, prompt_adapter_request: Optional[PromptAdapterRequest] = None, priority: int = 0, ) -&gt; EngineCoreRequest: # TODO(woosuk): Support pooling models. # TODO(woosuk): Support encoder-decoder models. self._validate_lora(lora_request) self._validate_params(params) if priority != 0: raise ValueError(&#34;V1 does not support priority yet.&#34;) if trace_headers is not None: raise ValueError(&#34;V1 does not support tracing yet.&#34;) if prompt_adapter_request is not None: raise ValueError(&#34;V1 does not support prompt_adapter_request.&#34;) if arrival_time is None: arrival_time = time.time() # Process inputs, which includes: # 1. Tokenize text prompt, with LoRA request if one exists. # 2. For multimodal models with a merged preprocessor, preprocess # multimodal data and expand prompt token ids accordingly. # 3. Apply prompt adapter to prompt token ids if one exists. processed_inputs: ProcessorInputs = self.input_preprocessor.preprocess( prompt, lora_request=lora_request, prompt_adapter_request=prompt_adapter_request, return_mm_hashes=self.use_hash, ) eos_token_id = self.input_preprocessor.get_eos_token_id(lora_request) self._validate_model_inputs(processed_inputs, lora_request) if is_encoder_decoder_inputs(processed_inputs): decoder_inputs = SingletonInputsAdapter( processed_inputs[&#34;decoder&#34;]) encoder_inputs = SingletonInputsAdapter( processed_inputs[&#34;encoder&#34;]) else: decoder_inputs = SingletonInputsAdapter(processed_inputs) encoder_inputs = None # TODO: Impl encoder-decoder if encoder_inputs is not None: raise NotImplementedError assert isinstance(params, SamplingParams) # TODO: can we avoid cloning here in multiproc case? sampling_params = params.clone() # If unset max tokens, then generate up to the max_model_len. if sampling_params.max_tokens is None: sampling_params.max_tokens = (self.model_config.max_model_len - len(decoder_inputs.prompt_token_ids)) sampling_params.update_from_generation_config( self.generation_config_fields, eos_token_id) sampling_params.update_from_tokenizer( self.tokenizer.get_lora_tokenizer(lora_request)) # Multimodal related. sorted_mm_inputs: Optional[list[MultiModalKwargs]] = None sorted_mm_positions: Optional[list[PlaceholderRange]] = None sorted_mm_hashes: Optional[list[str]] = None if (decoder_mm_inputs := decoder_inputs.multi_modal_data): assert isinstance(decoder_mm_inputs, MultiModalKwargs) # The output of merged multi-modal processor (`decoder_mm_inputs`) # contains the kwargs for all items from all modalities. # This code separates them so that there is one set of kwargs # per item per modality. individual_mm_inputs = [ MultiModalKwargs.from_items([item]) for modality in decoder_mm_inputs.modalities for item in decoder_mm_inputs.get_items(modality) ] # Merge and flatten multimodal placeholders, hashes and inputs # from dictionaries to lists, and sort them by each item&#39;s position # in the input sequence. # NOTE: interleaved modalities are not supported. ( sorted_modalities, sorted_mm_positions, sorted_mm_hashes, ) = merge_and_sort_multimodal_metadata( decoder_inputs.multi_modal_placeholders, decoder_inputs.multi_modal_hashes if self.use_hash else None, ) # NOTE: Sort multimodal inputs/kwargs ONLY IF there are multiple # modalities involved. if len(sorted_modalities) &gt; 1: modality_order_dict = { modality: order for order, modality in enumerate(sorted_modalities) } # Sanity check to make sure each multimodal input has only one # modality key. for mm_input in individual_mm_inputs: assert len(mm_input.modalities) == 1 # Sort MultiModalKwargs to match sorted_mm_positions sorted_mm_inputs = sorted( individual_mm_inputs, key=lambda mm_input: modality_order_dict[list( mm_input.modalities)[0]]) else: sorted_mm_inputs = individual_mm_inputs return EngineCoreRequest( request_id=request_id, prompt=decoder_inputs.prompt, prompt_token_ids=decoder_inputs.prompt_token_ids, mm_inputs=sorted_mm_inputs, mm_hashes=sorted_mm_hashes, mm_placeholders=sorted_mm_positions, sampling_params=sampling_params, eos_token_id=eos_token_id, arrival_time=arrival_time, lora_request=lora_request, ) 3. OutputProcessor(convert EngineCoreOutputs –&gt; RequestOutput) Engine中OutPutProcessor的定义代码如下：">
+  <meta property="og:locale" content="en_gb">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="posts">
+    <meta property="article:published_time" content="2025-04-08T10:04:58+08:00">
+    <meta property="article:modified_time" content="2025-04-08T10:04:58+08:00">
+
+
+    
+    
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="VLLM">
+  <meta name="twitter:description" content="VLLM推理框架 VLLM Engine四个组件 1. Tokenizer 2. Processor (convert Inputs –&gt; EngineCoreRequests) Engine中Processor的定义代码如下：
+self.processor = Processor(vllm_config=vllm_config, tokenizer=self.tokenizer, #processor需要tokenizer input_registry=input_registry, mm_registry=mm_registry) Processor的主要操作代码如下：将输入prompt转变成EngineCoreRequests
+def process_inputs( self, #processor类 request_id: str, prompt: PromptType, params: Union[SamplingParams, PoolingParams], arrival_time: Optional[float] = None, lora_request: Optional[LoRARequest] = None, trace_headers: Optional[Mapping[str, str]] = None, prompt_adapter_request: Optional[PromptAdapterRequest] = None, priority: int = 0, ) -&gt; EngineCoreRequest: # TODO(woosuk): Support pooling models. # TODO(woosuk): Support encoder-decoder models. self._validate_lora(lora_request) self._validate_params(params) if priority != 0: raise ValueError(&#34;V1 does not support priority yet.&#34;) if trace_headers is not None: raise ValueError(&#34;V1 does not support tracing yet.&#34;) if prompt_adapter_request is not None: raise ValueError(&#34;V1 does not support prompt_adapter_request.&#34;) if arrival_time is None: arrival_time = time.time() # Process inputs, which includes: # 1. Tokenize text prompt, with LoRA request if one exists. # 2. For multimodal models with a merged preprocessor, preprocess # multimodal data and expand prompt token ids accordingly. # 3. Apply prompt adapter to prompt token ids if one exists. processed_inputs: ProcessorInputs = self.input_preprocessor.preprocess( prompt, lora_request=lora_request, prompt_adapter_request=prompt_adapter_request, return_mm_hashes=self.use_hash, ) eos_token_id = self.input_preprocessor.get_eos_token_id(lora_request) self._validate_model_inputs(processed_inputs, lora_request) if is_encoder_decoder_inputs(processed_inputs): decoder_inputs = SingletonInputsAdapter( processed_inputs[&#34;decoder&#34;]) encoder_inputs = SingletonInputsAdapter( processed_inputs[&#34;encoder&#34;]) else: decoder_inputs = SingletonInputsAdapter(processed_inputs) encoder_inputs = None # TODO: Impl encoder-decoder if encoder_inputs is not None: raise NotImplementedError assert isinstance(params, SamplingParams) # TODO: can we avoid cloning here in multiproc case? sampling_params = params.clone() # If unset max tokens, then generate up to the max_model_len. if sampling_params.max_tokens is None: sampling_params.max_tokens = (self.model_config.max_model_len - len(decoder_inputs.prompt_token_ids)) sampling_params.update_from_generation_config( self.generation_config_fields, eos_token_id) sampling_params.update_from_tokenizer( self.tokenizer.get_lora_tokenizer(lora_request)) # Multimodal related. sorted_mm_inputs: Optional[list[MultiModalKwargs]] = None sorted_mm_positions: Optional[list[PlaceholderRange]] = None sorted_mm_hashes: Optional[list[str]] = None if (decoder_mm_inputs := decoder_inputs.multi_modal_data): assert isinstance(decoder_mm_inputs, MultiModalKwargs) # The output of merged multi-modal processor (`decoder_mm_inputs`) # contains the kwargs for all items from all modalities. # This code separates them so that there is one set of kwargs # per item per modality. individual_mm_inputs = [ MultiModalKwargs.from_items([item]) for modality in decoder_mm_inputs.modalities for item in decoder_mm_inputs.get_items(modality) ] # Merge and flatten multimodal placeholders, hashes and inputs # from dictionaries to lists, and sort them by each item&#39;s position # in the input sequence. # NOTE: interleaved modalities are not supported. ( sorted_modalities, sorted_mm_positions, sorted_mm_hashes, ) = merge_and_sort_multimodal_metadata( decoder_inputs.multi_modal_placeholders, decoder_inputs.multi_modal_hashes if self.use_hash else None, ) # NOTE: Sort multimodal inputs/kwargs ONLY IF there are multiple # modalities involved. if len(sorted_modalities) &gt; 1: modality_order_dict = { modality: order for order, modality in enumerate(sorted_modalities) } # Sanity check to make sure each multimodal input has only one # modality key. for mm_input in individual_mm_inputs: assert len(mm_input.modalities) == 1 # Sort MultiModalKwargs to match sorted_mm_positions sorted_mm_inputs = sorted( individual_mm_inputs, key=lambda mm_input: modality_order_dict[list( mm_input.modalities)[0]]) else: sorted_mm_inputs = individual_mm_inputs return EngineCoreRequest( request_id=request_id, prompt=decoder_inputs.prompt, prompt_token_ids=decoder_inputs.prompt_token_ids, mm_inputs=sorted_mm_inputs, mm_hashes=sorted_mm_hashes, mm_placeholders=sorted_mm_positions, sampling_params=sampling_params, eos_token_id=eos_token_id, arrival_time=arrival_time, lora_request=lora_request, ) 3. OutputProcessor(convert EngineCoreOutputs –&gt; RequestOutput) Engine中OutPutProcessor的定义代码如下：">
+
+
+    
+
+    <link rel="canonical" href="https://theflash010.github.io/posts/vllm/">
+    <link href="/style.min.2d921c18cf1ec555ffc03d59a8adc211c402c68c930c27d6a0c306ab175a8d09.css" rel="stylesheet">
+    <link href="/code-highlight.min.706d31975fec544a864cb7f0d847a73ea55ca1df91bf495fd12a177138d807cf.css" rel="stylesheet">
+
+    
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png">
+    <link rel="mask-icon" href="/icons/safari-pinned-tab.svg">
+    <link rel="shortcut icon" href="/favicon.ico">
+
+
+
+
+<link rel="manifest" href="https://theflash010.github.io/site.webmanifest">
+
+<meta name="msapplication-config" content="/browserconfig.xml">
+<meta name="msapplication-TileColor" content="#2d89ef">
+<meta name="theme-color" content="#434648">
+
+    
+    <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg">
+
+    
+    
+    
+</head>
+<body data-theme = "auto" class="notransition">
+
+<script src="/js/theme.min.8961c317c5b88b953fe27525839672c9343f1058ab044696ca225656c8ba2ab0.js" integrity="sha256-iWHDF8W4i5U/4nUlg5ZyyTQ/EFirBEaWyiJWVsi6KrA="></script>
+
+<div class="navbar" role="navigation">
+    <nav class="menu" aria-label="Main Navigation">
+        <a href="https://theflash010.github.io/" class="logo">
+            <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" 
+viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" 
+stroke-linejoin="round" class="feather feather-home">
+<title>Home</title>
+<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+<polyline points="9 22 9 12 15 12 15 22"></polyline>
+</svg>
+        </a>
+        <input type="checkbox" id="menu-trigger" class="menu-trigger" />
+        <label for="menu-trigger">
+            <span class="menu-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" stroke="currentColor" fill="none" viewBox="0 0 14 14"><title>Menu</title><path stroke-linecap="round" stroke-linejoin="round" d="M10.595 7L3.40726 7"></path><path stroke-linecap="round" stroke-linejoin="round" d="M10.5096 3.51488L3.49301 3.51488"></path><path stroke-linecap="round" stroke-linejoin="round" d="M10.5096 10.4851H3.49301"></path><path stroke-linecap="round" stroke-linejoin="round" d="M0.5 12.5V1.5C0.5 0.947715 0.947715 0.5 1.5 0.5H12.5C13.0523 0.5 13.5 0.947715 13.5 1.5V12.5C13.5 13.0523 13.0523 13.5 12.5 13.5H1.5C0.947715 13.5 0.5 13.0523 0.5 12.5Z"></path></svg>
+            </span>
+        </label>
+
+        <div class="trigger">
+            <ul class="trigger-container">
+                
+                
+                <li>
+                    <a class="menu-link " href="/">
+                        Home
+                    </a>
+                    
+                </li>
+                
+                <li>
+                    <a class="menu-link active" href="/posts/">
+                        Posts
+                    </a>
+                    
+                </li>
+                
+                <li>
+                    <a class="menu-link " href="/pages/about/">
+                        About
+                    </a>
+                    
+                </li>
+                
+                <li class="menu-separator">
+                    <span>|</span>
+                </li>
+                
+                
+            </ul>
+            <a id="mode" href="#">
+                <svg xmlns="http://www.w3.org/2000/svg" class="mode-sunny" width="21" height="21" viewBox="0 0 14 14" stroke-width="1">
+<title>LIGHT</title><g><circle cx="7" cy="7" r="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"></circle><line x1="7" y1="0.5" x2="7" y2="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="2.4" y1="2.4" x2="3.82" y2="3.82" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="0.5" y1="7" x2="2.5" y2="7" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="2.4" y1="11.6" x2="3.82" y2="10.18" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="7" y1="13.5" x2="7" y2="11.5" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="11.6" y1="11.6" x2="10.18" y2="10.18" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="13.5" y1="7" x2="11.5" y2="7" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="11.6" y1="2.4" x2="10.18" y2="3.82" fill="none" stroke-linecap="round" stroke-linejoin="round"></line></g></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" class="mode-moon" width="21" height="21" viewBox="0 0 14 14" stroke-width="1">
+<title>DARK</title><g><circle cx="7" cy="7" r="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"></circle><line x1="7" y1="0.5" x2="7" y2="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="2.4" y1="2.4" x2="3.82" y2="3.82" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="0.5" y1="7" x2="2.5" y2="7" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="2.4" y1="11.6" x2="3.82" y2="10.18" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="7" y1="13.5" x2="7" y2="11.5" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="11.6" y1="11.6" x2="10.18" y2="10.18" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="13.5" y1="7" x2="11.5" y2="7" fill="none" stroke-linecap="round" stroke-linejoin="round"></line><line x1="11.6" y1="2.4" x2="10.18" y2="3.82" fill="none" stroke-linecap="round" stroke-linejoin="round"></line></g></svg>
+            </a>
+        </div>
+    </nav>
+</div>
+
+<div class="wrapper post">
+    <main class="page-content" aria-label="Content">
+        <article>
+            <header class="header">
+                <h1 class="header-title">VLLM</h1>
+                
+                
+                
+                <div class="post-meta">
+                    <time datetime="2025-04-08T10:04:58&#43;08:00" itemprop="datePublished"> 8 Apr 2025 </time>
+                </div>
+                
+            </header>
+            
+    
+    <details class="toc" ZgotmplZ>
+        <summary><b>Table of Contents</b></summary>
+        <nav id="TableOfContents">
+  <ul>
+    <li><a href="#vllm-engine四个组件">VLLM Engine四个组件</a>
+      <ul>
+        <li><a href="#1-tokenizer">1. Tokenizer</a></li>
+        <li><a href="#2-processor-convert-inputs--enginecorerequests">2. Processor (convert Inputs &ndash;&gt; EngineCoreRequests)</a></li>
+        <li><a href="#3-outputprocessorconvert-enginecoreoutputs--requestoutput">3. OutputProcessor(convert EngineCoreOutputs &ndash;&gt; RequestOutput)</a></li>
+        <li><a href="#4-enginecoregets-enginecorerequests-and-gives-enginecoreoutputs">4. EngineCore(gets EngineCoreRequests and gives EngineCoreOutputs)</a>
+          <ul>
+            <li><a href="#41-enginecoreclient">4.1 EngineCoreClient</a></li>
+            <li><a href="#42-enginecore幕后进程">4.2 EngineCore幕后进程</a></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+    </details>
+            <div class="page-content">
+                <h1 id="vllm推理框架">VLLM推理框架</h1>
+<h2 id="vllm-engine四个组件">VLLM Engine四个组件</h2>
+<h3 id="1-tokenizer">1. Tokenizer</h3>
+<h3 id="2-processor-convert-inputs--enginecorerequests">2. Processor (convert Inputs &ndash;&gt; EngineCoreRequests)</h3>
+<p>Engine中Processor的定义代码如下：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"> <span class="bp">self</span><span class="o">.</span><span class="n">processor</span> <span class="o">=</span> <span class="n">Processor</span><span class="p">(</span><span class="n">vllm_config</span><span class="o">=</span><span class="n">vllm_config</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                   <span class="n">tokenizer</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span><span class="p">,</span>    <span class="c1">#processor需要tokenizer</span>
+</span></span><span class="line"><span class="cl">                                   <span class="n">input_registry</span><span class="o">=</span><span class="n">input_registry</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                   <span class="n">mm_registry</span><span class="o">=</span><span class="n">mm_registry</span><span class="p">)</span>
+</span></span></code></pre></div><p>Processor的主要操作代码如下：将输入prompt转变成EngineCoreRequests</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">process_inputs</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="p">,</span>   <span class="c1">#processor类</span>
+</span></span><span class="line"><span class="cl">        <span class="n">request_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">prompt</span><span class="p">:</span> <span class="n">PromptType</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">params</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">SamplingParams</span><span class="p">,</span> <span class="n">PoolingParams</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">        <span class="n">arrival_time</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">lora_request</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">LoRARequest</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">trace_headers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">prompt_adapter_request</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PromptAdapterRequest</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">priority</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EngineCoreRequest</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># TODO(woosuk): Support pooling models.</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># TODO(woosuk): Support encoder-decoder models.</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_validate_lora</span><span class="p">(</span><span class="n">lora_request</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_validate_params</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">priority</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&#34;V1 does not support priority yet.&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">trace_headers</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&#34;V1 does not support tracing yet.&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">prompt_adapter_request</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&#34;V1 does not support prompt_adapter_request.&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">arrival_time</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="n">arrival_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Process inputs, which includes:</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># 1. Tokenize text prompt, with LoRA request if one exists.</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># 2. For multimodal models with a merged preprocessor, preprocess</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">#   multimodal data and expand prompt token ids accordingly.</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># 3. Apply prompt adapter to prompt token ids if one exists.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">processed_inputs</span><span class="p">:</span> <span class="n">ProcessorInputs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_preprocessor</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">prompt</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">lora_request</span><span class="o">=</span><span class="n">lora_request</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">prompt_adapter_request</span><span class="o">=</span><span class="n">prompt_adapter_request</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">return_mm_hashes</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">use_hash</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="n">eos_token_id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_preprocessor</span><span class="o">.</span><span class="n">get_eos_token_id</span><span class="p">(</span><span class="n">lora_request</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_validate_model_inputs</span><span class="p">(</span><span class="n">processed_inputs</span><span class="p">,</span> <span class="n">lora_request</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">is_encoder_decoder_inputs</span><span class="p">(</span><span class="n">processed_inputs</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">            <span class="n">decoder_inputs</span> <span class="o">=</span> <span class="n">SingletonInputsAdapter</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                <span class="n">processed_inputs</span><span class="p">[</span><span class="s2">&#34;decoder&#34;</span><span class="p">])</span>
+</span></span><span class="line"><span class="cl">            <span class="n">encoder_inputs</span> <span class="o">=</span> <span class="n">SingletonInputsAdapter</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                <span class="n">processed_inputs</span><span class="p">[</span><span class="s2">&#34;encoder&#34;</span><span class="p">])</span>
+</span></span><span class="line"><span class="cl">        <span class="k">else</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="n">decoder_inputs</span> <span class="o">=</span> <span class="n">SingletonInputsAdapter</span><span class="p">(</span><span class="n">processed_inputs</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="n">encoder_inputs</span> <span class="o">=</span> <span class="kc">None</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># TODO: Impl encoder-decoder</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">encoder_inputs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">SamplingParams</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># TODO: can we avoid cloning here in multiproc case?</span>
+</span></span><span class="line"><span class="cl">        <span class="n">sampling_params</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">clone</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># If unset max tokens, then generate up to the max_model_len.</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">sampling_params</span><span class="o">.</span><span class="n">max_tokens</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="n">sampling_params</span><span class="o">.</span><span class="n">max_tokens</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model_config</span><span class="o">.</span><span class="n">max_model_len</span> <span class="o">-</span>
+</span></span><span class="line"><span class="cl">                                          <span class="nb">len</span><span class="p">(</span><span class="n">decoder_inputs</span><span class="o">.</span><span class="n">prompt_token_ids</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl">        <span class="n">sampling_params</span><span class="o">.</span><span class="n">update_from_generation_config</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">generation_config_fields</span><span class="p">,</span> <span class="n">eos_token_id</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="n">sampling_params</span><span class="o">.</span><span class="n">update_from_tokenizer</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span><span class="o">.</span><span class="n">get_lora_tokenizer</span><span class="p">(</span><span class="n">lora_request</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Multimodal related.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">sorted_mm_inputs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="n">MultiModalKwargs</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+</span></span><span class="line"><span class="cl">        <span class="n">sorted_mm_positions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="n">PlaceholderRange</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+</span></span><span class="line"><span class="cl">        <span class="n">sorted_mm_hashes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="p">(</span><span class="n">decoder_mm_inputs</span> <span class="o">:=</span> <span class="n">decoder_inputs</span><span class="o">.</span><span class="n">multi_modal_data</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">            <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">decoder_mm_inputs</span><span class="p">,</span> <span class="n">MultiModalKwargs</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="c1"># The output of merged multi-modal processor (`decoder_mm_inputs`)</span>
+</span></span><span class="line"><span class="cl">            <span class="c1"># contains the kwargs for all items from all modalities.</span>
+</span></span><span class="line"><span class="cl">            <span class="c1"># This code separates them so that there is one set of kwargs</span>
+</span></span><span class="line"><span class="cl">            <span class="c1"># per item per modality.</span>
+</span></span><span class="line"><span class="cl">            <span class="n">individual_mm_inputs</span> <span class="o">=</span> <span class="p">[</span>
+</span></span><span class="line"><span class="cl">                <span class="n">MultiModalKwargs</span><span class="o">.</span><span class="n">from_items</span><span class="p">([</span><span class="n">item</span><span class="p">])</span>
+</span></span><span class="line"><span class="cl">                <span class="k">for</span> <span class="n">modality</span> <span class="ow">in</span> <span class="n">decoder_mm_inputs</span><span class="o">.</span><span class="n">modalities</span>
+</span></span><span class="line"><span class="cl">                <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">decoder_mm_inputs</span><span class="o">.</span><span class="n">get_items</span><span class="p">(</span><span class="n">modality</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="p">]</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="c1"># Merge and flatten multimodal placeholders, hashes and inputs</span>
+</span></span><span class="line"><span class="cl">            <span class="c1"># from dictionaries to lists, and sort them by each item&#39;s position</span>
+</span></span><span class="line"><span class="cl">            <span class="c1"># in the input sequence.</span>
+</span></span><span class="line"><span class="cl">            <span class="c1"># NOTE: interleaved modalities are not supported.</span>
+</span></span><span class="line"><span class="cl">            <span class="p">(</span>
+</span></span><span class="line"><span class="cl">                <span class="n">sorted_modalities</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                <span class="n">sorted_mm_positions</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                <span class="n">sorted_mm_hashes</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="p">)</span> <span class="o">=</span> <span class="n">merge_and_sort_multimodal_metadata</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                <span class="n">decoder_inputs</span><span class="o">.</span><span class="n">multi_modal_placeholders</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                <span class="n">decoder_inputs</span><span class="o">.</span><span class="n">multi_modal_hashes</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_hash</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="c1"># NOTE: Sort multimodal inputs/kwargs ONLY IF there are multiple</span>
+</span></span><span class="line"><span class="cl">            <span class="c1"># modalities involved.</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sorted_modalities</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="n">modality_order_dict</span> <span class="o">=</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">                    <span class="n">modality</span><span class="p">:</span> <span class="n">order</span>
+</span></span><span class="line"><span class="cl">                    <span class="k">for</span> <span class="n">order</span><span class="p">,</span> <span class="n">modality</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">sorted_modalities</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                <span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">                <span class="c1"># Sanity check to make sure each multimodal input has only one</span>
+</span></span><span class="line"><span class="cl">                <span class="c1"># modality key.</span>
+</span></span><span class="line"><span class="cl">                <span class="k">for</span> <span class="n">mm_input</span> <span class="ow">in</span> <span class="n">individual_mm_inputs</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">mm_input</span><span class="o">.</span><span class="n">modalities</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">                <span class="c1"># Sort MultiModalKwargs to match sorted_mm_positions</span>
+</span></span><span class="line"><span class="cl">                <span class="n">sorted_mm_inputs</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                    <span class="n">individual_mm_inputs</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                    <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">mm_input</span><span class="p">:</span> <span class="n">modality_order_dict</span><span class="p">[</span><span class="nb">list</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                        <span class="n">mm_input</span><span class="o">.</span><span class="n">modalities</span><span class="p">)[</span><span class="mi">0</span><span class="p">]])</span>
+</span></span><span class="line"><span class="cl">            <span class="k">else</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="n">sorted_mm_inputs</span> <span class="o">=</span> <span class="n">individual_mm_inputs</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="n">EngineCoreRequest</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">request_id</span><span class="o">=</span><span class="n">request_id</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">prompt</span><span class="o">=</span><span class="n">decoder_inputs</span><span class="o">.</span><span class="n">prompt</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">prompt_token_ids</span><span class="o">=</span><span class="n">decoder_inputs</span><span class="o">.</span><span class="n">prompt_token_ids</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">mm_inputs</span><span class="o">=</span><span class="n">sorted_mm_inputs</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">mm_hashes</span><span class="o">=</span><span class="n">sorted_mm_hashes</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">mm_placeholders</span><span class="o">=</span><span class="n">sorted_mm_positions</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">sampling_params</span><span class="o">=</span><span class="n">sampling_params</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">eos_token_id</span><span class="o">=</span><span class="n">eos_token_id</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">arrival_time</span><span class="o">=</span><span class="n">arrival_time</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">lora_request</span><span class="o">=</span><span class="n">lora_request</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="p">)</span>
+</span></span></code></pre></div><h3 id="3-outputprocessorconvert-enginecoreoutputs--requestoutput">3. OutputProcessor(convert EngineCoreOutputs &ndash;&gt; RequestOutput)</h3>
+<p>Engine中OutPutProcessor的定义代码如下：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="bp">self</span><span class="o">.</span><span class="n">output_processor</span> <span class="o">=</span> <span class="n">OutputProcessor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span><span class="p">,</span> <span class="c1">#OutPutProcessor需要tokenizer</span>
+</span></span><span class="line"><span class="cl">                                                <span class="n">log_stats</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span></span></code></pre></div><h3 id="4-enginecoregets-enginecorerequests-and-gives-enginecoreoutputs">4. EngineCore(gets EngineCoreRequests and gives EngineCoreOutputs)</h3>
+<p>Engine中EngineCore的定义代码如下：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="c1"># EngineCore (gets EngineCoreRequests and gives EngineCoreOutputs)</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span> <span class="o">=</span> <span class="n">EngineCoreClient</span><span class="o">.</span><span class="n">make_client</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">multiprocess_mode</span><span class="o">=</span><span class="n">multiprocess_mode</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">asyncio_mode</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">vllm_config</span><span class="o">=</span><span class="n">vllm_config</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">executor_class</span><span class="o">=</span><span class="n">executor_class</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">log_stats</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>  <span class="c1"># FIXME: implement</span>
+</span></span><span class="line"><span class="cl">        <span class="p">)</span>
+</span></span></code></pre></div><p>EngineCore实际上由两部分组成，EngineCoreClient和EngineCore幕后进程，客户端通过zmq通信库与EngineCore幕后进程进行交互，发送EngineCoreRequests请求给幕后进程，从幕后进程获取EngineCoreOutputs结果</p>
+<img src=".\image-20250408100303542.png" alt="image-20250408100303542" style="zoom:67%;" />
+<h4 id="41-enginecoreclient">4.1 EngineCoreClient</h4>
+<p>EngineCoreClient有多种选择AsyncMPClient，SyncMPClient，InprocClient</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">class</span> <span class="nc">EngineCoreClient</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">    <span class="s2">&#34;&#34;&#34;
+</span></span></span><span class="line"><span class="cl"><span class="s2">    EngineCoreClient: subclasses handle different methods for pushing 
+</span></span></span><span class="line"><span class="cl"><span class="s2">        and pulling from the EngineCore for asyncio / multiprocessing.
+</span></span></span><span class="line"><span class="cl"><span class="s2">
+</span></span></span><span class="line"><span class="cl"><span class="s2">    Subclasses:
+</span></span></span><span class="line"><span class="cl"><span class="s2">    * InprocClient: In process EngineCore (for V0-style LLMEngine use)
+</span></span></span><span class="line"><span class="cl"><span class="s2">    * SyncMPClient: ZMQ + background proc EngineCore (for LLM)
+</span></span></span><span class="line"><span class="cl"><span class="s2">    * AsyncMPClient: ZMQ + background proc EngineCore w/ asyncio (for AsyncLLM)
+</span></span></span><span class="line"><span class="cl"><span class="s2">    &#34;&#34;&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="nd">@staticmethod</span>
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">make_client</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">        <span class="n">multiprocess_mode</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">asyncio_mode</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">vllm_config</span><span class="p">:</span> <span class="n">VllmConfig</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">executor_class</span><span class="p">:</span> <span class="nb">type</span><span class="p">[</span><span class="n">Executor</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">        <span class="n">log_stats</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&#34;EngineCoreClient&#34;</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># TODO: support this for debugging purposes.</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">asyncio_mode</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">multiprocess_mode</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                <span class="s2">&#34;Running EngineCore in asyncio without multiprocessing &#34;</span>
+</span></span><span class="line"><span class="cl">                <span class="s2">&#34;is not currently supported.&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">multiprocess_mode</span> <span class="ow">and</span> <span class="n">asyncio_mode</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="k">return</span> <span class="n">AsyncMPClient</span><span class="p">(</span><span class="n">vllm_config</span><span class="p">,</span> <span class="n">executor_class</span><span class="p">,</span> <span class="n">log_stats</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">multiprocess_mode</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">asyncio_mode</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="k">return</span> <span class="n">SyncMPClient</span><span class="p">(</span><span class="n">vllm_config</span><span class="p">,</span> <span class="n">executor_class</span><span class="p">,</span> <span class="n">log_stats</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="n">InprocClient</span><span class="p">(</span><span class="n">vllm_config</span><span class="p">,</span> <span class="n">executor_class</span><span class="p">,</span> <span class="n">log_stats</span><span class="p">)</span>
+</span></span></code></pre></div><p>这些类都继承于父类MPClient，在这个父类的init函数中会定义zmq通信的接收路径，开启EngineCore幕后进程等工作，也就是说在llm_engine定义self.engine_core时，EngineCore幕后进程就已经存在了</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">class</span> <span class="nc">MPClient</span><span class="p">(</span><span class="n">EngineCoreClient</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">    <span class="s2">&#34;&#34;&#34;
+</span></span></span><span class="line"><span class="cl"><span class="s2">    MPClient: base client for multi-proc EngineCore.
+</span></span></span><span class="line"><span class="cl"><span class="s2">        EngineCore runs in a background process busy loop, getting
+</span></span></span><span class="line"><span class="cl"><span class="s2">        new EngineCoreRequests and returning EngineCoreOutputs
+</span></span></span><span class="line"><span class="cl"><span class="s2">
+</span></span></span><span class="line"><span class="cl"><span class="s2">        * pushes EngineCoreRequests via input_socket
+</span></span></span><span class="line"><span class="cl"><span class="s2">        * pulls EngineCoreOutputs via output_socket
+</span></span></span><span class="line"><span class="cl"><span class="s2">    
+</span></span></span><span class="line"><span class="cl"><span class="s2">        * AsyncMPClient subclass for AsyncLLM usage
+</span></span></span><span class="line"><span class="cl"><span class="s2">        * SyncMPClient subclass for LLM usage
+</span></span></span><span class="line"><span class="cl"><span class="s2">    &#34;&#34;&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">asyncio_mode</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">vllm_config</span><span class="p">:</span> <span class="n">VllmConfig</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">executor_class</span><span class="p">:</span> <span class="nb">type</span><span class="p">[</span><span class="n">Executor</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">        <span class="n">log_stats</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="p">):</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># The child processes will send SIGUSR1 when unrecoverable</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># errors happen. We kill the process tree here so that the</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># stack trace is very evident.</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># TODO(rob): rather than killing the main process, we should</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># figure out how to raise an AsyncEngineDeadError and</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># handle at the API server level so we can return a better</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># error code to the clients calling vLLM.</span>
+</span></span><span class="line"><span class="cl">        <span class="k">def</span> <span class="nf">sigusr1_handler</span><span class="p">(</span><span class="n">signum</span><span class="p">,</span> <span class="n">frame</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">            <span class="n">logger</span><span class="o">.</span><span class="n">fatal</span><span class="p">(</span><span class="s2">&#34;Got fatal signal from worker processes, shutting &#34;</span>
+</span></span><span class="line"><span class="cl">                         <span class="s2">&#34;down. See stack trace above for root cause issue.&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="n">kill_process_tree</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">())</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">threading</span><span class="o">.</span><span class="n">current_thread</span><span class="p">()</span> <span class="o">==</span> <span class="n">threading</span><span class="o">.</span><span class="n">main_thread</span><span class="p">():</span>
+</span></span><span class="line"><span class="cl">            <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGUSR1</span><span class="p">,</span> <span class="n">sigusr1_handler</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">else</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&#34;SIGUSR1 handler not installed because we are not &#34;</span>
+</span></span><span class="line"><span class="cl">                           <span class="s2">&#34;running in the main thread. In this case the &#34;</span>
+</span></span><span class="line"><span class="cl">                           <span class="s2">&#34;forked engine process may not be killed when &#34;</span>
+</span></span><span class="line"><span class="cl">                           <span class="s2">&#34;an exception is raised, and you need to handle &#34;</span>
+</span></span><span class="line"><span class="cl">                           <span class="s2">&#34;the engine process shutdown manually.&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Serialization setup.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">encoder</span> <span class="o">=</span> <span class="n">MsgpackEncoder</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">decoder</span> <span class="o">=</span> <span class="n">MsgpackDecoder</span><span class="p">(</span><span class="n">EngineCoreOutputs</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># ZMQ setup.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">sync_ctx</span> <span class="o">=</span> <span class="n">zmq</span><span class="o">.</span><span class="n">Context</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span> <span class="o">=</span> <span class="n">zmq</span><span class="o">.</span><span class="n">asyncio</span><span class="o">.</span><span class="n">Context</span><span class="p">(</span><span class="n">sync_ctx</span><span class="p">)</span> <span class="k">if</span> <span class="n">asyncio_mode</span> <span class="k">else</span> <span class="n">sync_ctx</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># This will ensure resources created so far are closed</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># when the client is garbage collected,  even if an</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># exception is raised mid-construction.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">resources</span> <span class="o">=</span> <span class="n">BackgroundResources</span><span class="p">(</span><span class="n">ctx</span><span class="o">=</span><span class="n">sync_ctx</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_finalizer</span> <span class="o">=</span> <span class="n">weakref</span><span class="o">.</span><span class="n">finalize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">resources</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Paths for IPC.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">output_path</span> <span class="o">=</span> <span class="n">get_open_zmq_ipc_path</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">        <span class="n">input_path</span> <span class="o">=</span> <span class="n">get_open_zmq_ipc_path</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Start EngineCore in background process.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">resources</span><span class="o">.</span><span class="n">proc_handle</span> <span class="o">=</span> <span class="n">BackgroundProcHandle</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">input_path</span><span class="o">=</span><span class="n">input_path</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">output_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">output_path</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">process_name</span><span class="o">=</span><span class="s2">&#34;EngineCore&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">target_fn</span><span class="o">=</span><span class="n">EngineCoreProc</span><span class="o">.</span><span class="n">run_engine_core</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">process_kwargs</span><span class="o">=</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">                <span class="s2">&#34;vllm_config&#34;</span><span class="p">:</span> <span class="n">vllm_config</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                <span class="s2">&#34;executor_class&#34;</span><span class="p">:</span> <span class="n">executor_class</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                <span class="s2">&#34;log_stats&#34;</span><span class="p">:</span> <span class="n">log_stats</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="p">})</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Create input socket.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">resources</span><span class="o">.</span><span class="n">input_socket</span> <span class="o">=</span> <span class="n">make_zmq_socket</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="p">,</span> <span class="n">input_path</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                                      <span class="n">zmq</span><span class="o">.</span><span class="n">constants</span><span class="o">.</span><span class="n">PUSH</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">input_socket</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">resources</span><span class="o">.</span><span class="n">input_socket</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">utility_results</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">AnyFuture</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">shutdown</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_finalizer</span><span class="p">()</span>
+</span></span></code></pre></div><p>client发送请求给EngineCore会进行如下操作，以SyncMPClient为例：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">add_request</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">EngineCoreRequest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># NOTE: text prompt is not needed in the core engine as it has been</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># tokenized.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">request</span><span class="o">.</span><span class="n">prompt</span> <span class="o">=</span> <span class="kc">None</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_send_input</span><span class="p">(</span><span class="n">EngineCoreRequestType</span><span class="o">.</span><span class="n">ADD</span><span class="p">,</span> <span class="n">request</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">_send_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request_type</span><span class="p">:</span> <span class="n">EngineCoreRequestType</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                    <span class="n">request</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># (RequestType, SerializedRequest)</span>
+</span></span><span class="line"><span class="cl">        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span><span class="n">request_type</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoder</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">request</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">input_socket</span><span class="o">.</span><span class="n">send_multipart</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span></span></code></pre></div><h4 id="42-enginecore幕后进程">4.2 EngineCore幕后进程</h4>
+<p>EngineCore幕后进程由BackgroundProcHandle生成</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">class</span> <span class="nc">BackgroundProcHandle</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">    <span class="s2">&#34;&#34;&#34;
+</span></span></span><span class="line"><span class="cl"><span class="s2">    Utility class to handle creation, readiness, and shutdown
+</span></span></span><span class="line"><span class="cl"><span class="s2">    of background processes used by the AsyncLLM and LLMEngine.
+</span></span></span><span class="line"><span class="cl"><span class="s2">    &#34;&#34;&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">input_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">process_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">target_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">process_kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">    <span class="p">):</span>
+</span></span><span class="line"><span class="cl">        <span class="n">context</span> <span class="o">=</span> <span class="n">get_mp_context</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">        <span class="n">reader</span><span class="p">,</span> <span class="n">writer</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">Pipe</span><span class="p">(</span><span class="n">duplex</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="k">assert</span> <span class="p">(</span><span class="s2">&#34;ready_pipe&#34;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">process_kwargs</span>
+</span></span><span class="line"><span class="cl">                <span class="ow">and</span> <span class="s2">&#34;input_path&#34;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">process_kwargs</span>
+</span></span><span class="line"><span class="cl">                <span class="ow">and</span> <span class="s2">&#34;output_path&#34;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">process_kwargs</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="n">process_kwargs</span><span class="p">[</span><span class="s2">&#34;ready_pipe&#34;</span><span class="p">]</span> <span class="o">=</span> <span class="n">writer</span>
+</span></span><span class="line"><span class="cl">        <span class="n">process_kwargs</span><span class="p">[</span><span class="s2">&#34;input_path&#34;</span><span class="p">]</span> <span class="o">=</span> <span class="n">input_path</span>
+</span></span><span class="line"><span class="cl">        <span class="n">process_kwargs</span><span class="p">[</span><span class="s2">&#34;output_path&#34;</span><span class="p">]</span> <span class="o">=</span> <span class="n">output_path</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Run busy loop in background process.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">proc</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">Process</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">target_fn</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="n">process_kwargs</span><span class="p">)</span>  <span class="c1">#仅初始化进程对象，并未真正启动进程</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_finalizer</span> <span class="o">=</span> <span class="n">weakref</span><span class="o">.</span><span class="n">finalize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">shutdown</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">proc</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                           <span class="n">input_path</span><span class="p">,</span> <span class="n">output_path</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">proc</span><span class="o">.</span><span class="n">start</span><span class="p">()</span> <span class="c1">#启动进程</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Wait for startup.</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">reader</span><span class="o">.</span><span class="n">recv</span><span class="p">()[</span><span class="s2">&#34;status&#34;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&#34;READY&#34;</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&#34;</span><span class="si">{</span><span class="n">process_name</span><span class="si">}</span><span class="s2"> initialization failed. &#34;</span>
+</span></span><span class="line"><span class="cl">                               <span class="s2">&#34;See root cause above.&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">shutdown</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_finalizer</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">        
+</span></span><span class="line"><span class="cl">        
+</span></span><span class="line"><span class="cl"><span class="k">def</span> <span class="nf">start</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">    <span class="s1">&#39;&#39;&#39;
+</span></span></span><span class="line"><span class="cl"><span class="s1">    Start child process
+</span></span></span><span class="line"><span class="cl"><span class="s1">    &#39;&#39;&#39;</span>
+</span></span><span class="line"><span class="cl">    <span class="bp">self</span><span class="o">.</span><span class="n">_check_closed</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_popen</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">,</span> <span class="s1">&#39;cannot start a process twice&#39;</span>
+</span></span><span class="line"><span class="cl">    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parent_pid</span> <span class="o">==</span> <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">(),</span> \
+</span></span><span class="line"><span class="cl">           <span class="s1">&#39;can only start a process object created by current process&#39;</span>
+</span></span><span class="line"><span class="cl">    <span class="k">assert</span> <span class="ow">not</span> <span class="n">_current_process</span><span class="o">.</span><span class="n">_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;daemon&#39;</span><span class="p">),</span> \
+</span></span><span class="line"><span class="cl">           <span class="s1">&#39;daemonic processes are not allowed to have children&#39;</span>
+</span></span><span class="line"><span class="cl">    <span class="n">_cleanup</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">    <span class="bp">self</span><span class="o">.</span><span class="n">_popen</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_Popen</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>  <span class="c1">#这里启动了新的进程，同时生成一个EngineCoreProc对象</span>
+</span></span><span class="line"><span class="cl">    <span class="bp">self</span><span class="o">.</span><span class="n">_sentinel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_popen</span><span class="o">.</span><span class="n">sentinel</span>
+</span></span><span class="line"><span class="cl">    <span class="c1"># Avoid a refcycle if the target function holds an indirect</span>
+</span></span><span class="line"><span class="cl">    <span class="c1"># reference to the process object (see bpo-30775)</span>
+</span></span><span class="line"><span class="cl">    <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_target</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_args</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kwargs</span>
+</span></span><span class="line"><span class="cl">    <span class="n">_children</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="c1">#将当前Process实例添加到全局集合_children中，防止僵尸进程</span>
+</span></span></code></pre></div><h5 id="421-enginecore">4.2.1 EngineCore</h5>
+<p>EngineCoreProc继承于EngineCore类，下面先介绍EngineCore类的具体内容：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">class</span> <span class="nc">EngineCore</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">    <span class="s2">&#34;&#34;&#34;Inner loop of vLLM&#39;s Engine.&#34;&#34;&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">vllm_config</span><span class="p">:</span> <span class="n">VllmConfig</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">executor_class</span><span class="p">:</span> <span class="nb">type</span><span class="p">[</span><span class="n">Executor</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">        <span class="n">log_stats</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="p">):</span>
+</span></span><span class="line"><span class="cl">       <span class="k">assert</span> <span class="n">vllm_config</span><span class="o">.</span><span class="n">model_config</span><span class="o">.</span><span class="n">runner_type</span> <span class="o">!=</span> <span class="s2">&#34;pooling&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&#34;Initializing a V1 LLM engine (v</span><span class="si">%s</span><span class="s2">) with config: </span><span class="si">%s</span><span class="s2">&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                    <span class="n">VLLM_VERSION</span><span class="p">,</span> <span class="n">vllm_config</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">log_stats</span> <span class="o">=</span> <span class="n">log_stats</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Setup Model.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">model_executor</span> <span class="o">=</span> <span class="n">executor_class</span><span class="p">(</span><span class="n">vllm_config</span><span class="p">)</span><span class="c1">#初始化executor，加载参数</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Setup KV Caches and update CacheConfig after profiling.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">num_gpu_blocks</span><span class="p">,</span> <span class="n">num_cpu_blocks</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_initialize_kv_caches</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">vllm_config</span><span class="p">)</span> <span class="c1">#确定kvcache配置，并提前分配好kvcache空间</span>
+</span></span><span class="line"><span class="cl">        <span class="n">vllm_config</span><span class="o">.</span><span class="n">cache_config</span><span class="o">.</span><span class="n">num_gpu_blocks</span> <span class="o">=</span> <span class="n">num_gpu_blocks</span>
+</span></span><span class="line"><span class="cl">        <span class="n">vllm_config</span><span class="o">.</span><span class="n">cache_config</span><span class="o">.</span><span class="n">num_cpu_blocks</span> <span class="o">=</span> <span class="n">num_cpu_blocks</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">structured_output_manager</span> <span class="o">=</span> <span class="n">StructuredOutputManager</span><span class="p">(</span><span class="n">vllm_config</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Setup scheduler.</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">vllm_config</span><span class="o">.</span><span class="n">scheduler_config</span><span class="o">.</span><span class="n">scheduler_cls</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">            <span class="n">Scheduler</span> <span class="o">=</span> <span class="n">resolve_obj_by_qualname</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                <span class="n">vllm_config</span><span class="o">.</span><span class="n">scheduler_config</span><span class="o">.</span><span class="n">scheduler_cls</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">else</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="n">Scheduler</span> <span class="o">=</span> <span class="n">vllm_config</span><span class="o">.</span><span class="n">scheduler_config</span><span class="o">.</span><span class="n">scheduler_cls</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># This warning can be removed once the V1 Scheduler interface is</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># finalized and we can maintain support for scheduler classes that</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># implement it</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">Scheduler</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">V1Scheduler</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                <span class="s2">&#34;Using configured V1 scheduler class </span><span class="si">%s</span><span class="s2">. &#34;</span>
+</span></span><span class="line"><span class="cl">                <span class="s2">&#34;This scheduler interface is not public and &#34;</span>
+</span></span><span class="line"><span class="cl">                <span class="s2">&#34;compatibility may not be maintained.&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                <span class="n">vllm_config</span><span class="o">.</span><span class="n">scheduler_config</span><span class="o">.</span><span class="n">scheduler_cls</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span> <span class="o">=</span> <span class="n">Scheduler</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">scheduler_config</span><span class="o">=</span><span class="n">vllm_config</span><span class="o">.</span><span class="n">scheduler_config</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">model_config</span><span class="o">=</span><span class="n">vllm_config</span><span class="o">.</span><span class="n">model_config</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">cache_config</span><span class="o">=</span><span class="n">vllm_config</span><span class="o">.</span><span class="n">cache_config</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">lora_config</span><span class="o">=</span><span class="n">vllm_config</span><span class="o">.</span><span class="n">lora_config</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">speculative_config</span><span class="o">=</span><span class="n">vllm_config</span><span class="o">.</span><span class="n">speculative_config</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">log_stats</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">log_stats</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">structured_output_manager</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">structured_output_manager</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="p">)</span> <span class="c1">#实例化Scheduler</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Setup MM Input Mapper.  多模态💩</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">mm_input_cache_server</span> <span class="o">=</span> <span class="n">MMInputCacheServer</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">vllm_config</span><span class="o">.</span><span class="n">model_config</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Setup batch queue for pipeline parallelism.</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># Batch queue for scheduled batches. This enables us to asynchronously</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># schedule and execute batches, and is required by pipeline parallelism</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># to eliminate pipeline bubbles.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">batch_queue_size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_executor</span><span class="o">.</span><span class="n">max_concurrent_batches</span>   <span class="c1">#batch_queue_size 表示 调度器（Scheduler）可以预先准备的、等待GPU执行的批处理请求（Batch）的最大数量，batch的队列</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">batch_queue</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">queue</span><span class="o">.</span><span class="n">Queue</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">Future</span><span class="p">[</span><span class="n">ModelRunnerOutput</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">                                                     <span class="n">SchedulerOutput</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_queue_size</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&#34;Batch queue is enabled with size </span><span class="si">%d</span><span class="s2">&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                        <span class="bp">self</span><span class="o">.</span><span class="n">batch_queue_size</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">batch_queue</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">Queue</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">batch_queue_size</span><span class="p">)</span>
+</span></span></code></pre></div><h6 id="4211-enginecore中初始化executor加载参数">4.2.1.1 EngineCore中初始化executor，加载参数</h6>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">class</span> <span class="nc">ExecutorBase</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">    <span class="s2">&#34;&#34;&#34;Base class for all executors.
+</span></span></span><span class="line"><span class="cl"><span class="s2">
+</span></span></span><span class="line"><span class="cl"><span class="s2">    An executor is responsible for executing the model on one device,
+</span></span></span><span class="line"><span class="cl"><span class="s2">    or it can be a distributed executor 
+</span></span></span><span class="line"><span class="cl"><span class="s2">    that can execute the model on multiple devices.
+</span></span></span><span class="line"><span class="cl"><span class="s2">    &#34;&#34;&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="n">uses_ray</span><span class="p">:</span> <span class="nb">bool</span>  <span class="c1"># whether the executor uses Ray for orchestration.</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">vllm_config</span><span class="p">:</span> <span class="n">VllmConfig</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">vllm_config</span> <span class="o">=</span> <span class="n">vllm_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">model_config</span> <span class="o">=</span> <span class="n">vllm_config</span><span class="o">.</span><span class="n">model_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">cache_config</span> <span class="o">=</span> <span class="n">vllm_config</span><span class="o">.</span><span class="n">cache_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">lora_config</span> <span class="o">=</span> <span class="n">vllm_config</span><span class="o">.</span><span class="n">lora_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">load_config</span> <span class="o">=</span> <span class="n">vllm_config</span><span class="o">.</span><span class="n">load_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">parallel_config</span> <span class="o">=</span> <span class="n">vllm_config</span><span class="o">.</span><span class="n">parallel_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_config</span> <span class="o">=</span> <span class="n">vllm_config</span><span class="o">.</span><span class="n">scheduler_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">device_config</span> <span class="o">=</span> <span class="n">vllm_config</span><span class="o">.</span><span class="n">device_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">speculative_config</span> <span class="o">=</span> <span class="n">vllm_config</span><span class="o">.</span><span class="n">speculative_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">prompt_adapter_config</span> <span class="o">=</span> <span class="n">vllm_config</span><span class="o">.</span><span class="n">prompt_adapter_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">observability_config</span> <span class="o">=</span> <span class="n">vllm_config</span><span class="o">.</span><span class="n">observability_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_init_executor</span><span class="p">()</span>  <span class="c1">#初始化executor，加载参数</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">is_sleeping</span> <span class="o">=</span> <span class="kc">False</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">class</span> <span class="nc">UniProcExecutor</span><span class="p">(</span><span class="n">ExecutorBase</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="n">uses_ray</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">_init_executor</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="s2">&#34;&#34;&#34;Initialize the worker and load the model.
+</span></span></span><span class="line"><span class="cl"><span class="s2">        &#34;&#34;&#34;</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">driver_worker</span> <span class="o">=</span> <span class="n">WorkerWrapperBase</span><span class="p">(</span><span class="n">vllm_config</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">vllm_config</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                               <span class="n">rpc_rank</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="n">distributed_init_method</span> <span class="o">=</span> <span class="n">get_distributed_init_method</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">get_ip</span><span class="p">(),</span> <span class="n">get_open_port</span><span class="p">())</span>
+</span></span><span class="line"><span class="cl">        <span class="n">local_rank</span> <span class="o">=</span> <span class="mi">0</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># set local rank as the device index if specified</span>
+</span></span><span class="line"><span class="cl">        <span class="n">device_info</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vllm_config</span><span class="o">.</span><span class="n">device_config</span><span class="o">.</span><span class="n">device</span><span class="o">.</span><span class="fm">__str__</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="s2">&#34;:&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">device_info</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="n">local_rank</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">device_info</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+</span></span><span class="line"><span class="cl">        <span class="n">rank</span> <span class="o">=</span> <span class="mi">0</span>
+</span></span><span class="line"><span class="cl">        <span class="n">kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">vllm_config</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">vllm_config</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">local_rank</span><span class="o">=</span><span class="n">local_rank</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">rank</span><span class="o">=</span><span class="n">rank</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">distributed_init_method</span><span class="o">=</span><span class="n">distributed_init_method</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">is_driver_worker</span><span class="o">=</span><span class="p">(</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">parallel_config</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="ow">or</span> <span class="p">(</span><span class="n">rank</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">parallel_config</span><span class="o">.</span><span class="n">tensor_parallel_size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">),</span>
+</span></span><span class="line"><span class="cl">        <span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">collective_rpc</span><span class="p">(</span><span class="s2">&#34;init_worker&#34;</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">([</span><span class="n">kwargs</span><span class="p">],</span> <span class="p">))</span>  <span class="c1">#通过远程过程调用rpc，执行这些函数</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">collective_rpc</span><span class="p">(</span><span class="s2">&#34;init_device&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">collective_rpc</span><span class="p">(</span><span class="s2">&#34;load_model&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">collective_rpc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                           <span class="n">method</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Callable</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">                           <span class="n">timeout</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                           <span class="n">args</span><span class="p">:</span> <span class="n">Tuple</span> <span class="o">=</span> <span class="p">(),</span>
+</span></span><span class="line"><span class="cl">                           <span class="n">kwargs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">]:</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="n">kwargs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{}</span>
+</span></span><span class="line"><span class="cl">            <span class="n">answer</span> <span class="o">=</span> <span class="n">run_method</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">driver_worker</span><span class="p">,</span> <span class="n">method</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="k">return</span> <span class="p">[</span><span class="n">answer</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">            
+</span></span><span class="line"><span class="cl"><span class="k">def</span> <span class="nf">run_method</span><span class="p">(</span><span class="n">obj</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">method</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">Callable</span><span class="p">],</span> <span class="n">args</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">               <span class="n">kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">    <span class="s2">&#34;&#34;&#34;
+</span></span></span><span class="line"><span class="cl"><span class="s2">    Run a method of an object with the given arguments and keyword arguments.
+</span></span></span><span class="line"><span class="cl"><span class="s2">    If the method is string, it will be converted to a method using getattr.
+</span></span></span><span class="line"><span class="cl"><span class="s2">    If the method is serialized bytes and will be deserialized using
+</span></span></span><span class="line"><span class="cl"><span class="s2">    cloudpickle.
+</span></span></span><span class="line"><span class="cl"><span class="s2">    If the method is a callable, it will be called directly.
+</span></span></span><span class="line"><span class="cl"><span class="s2">    &#34;&#34;&#34;</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">        <span class="n">func</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">cloudpickle</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">method</span><span class="p">),</span> <span class="n">obj</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">        <span class="k">try</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="n">func</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">method</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&#34;Method </span><span class="si">{</span><span class="n">method</span><span class="si">!r}</span><span class="s2"> is not&#34;</span>
+</span></span><span class="line"><span class="cl">                                      <span class="s2">&#34; implemented.&#34;</span><span class="p">)</span> <span class="kn">from</span> <span class="bp">None</span>
+</span></span><span class="line"><span class="cl">    <span class="k">else</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="n">func</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">obj</span><span class="p">)</span>  <span class="c1"># type: ignore</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>  <span class="c1">#执行rpc，返回结果</span>
+</span></span></code></pre></div><h6 id="4212-enginecore中确定kvcache配置并提前分配好kvcache空间">4.2.1.2 EngineCore中确定kvcache配置，并提前分配好kvcache空间</h6>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">_initialize_kv_caches</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                              <span class="n">vllm_config</span><span class="p">:</span> <span class="n">VllmConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+</span></span><span class="line"><span class="cl">        <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Get all kv cache needed by the model</span>
+</span></span><span class="line"><span class="cl">        <span class="n">kv_cache_specs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_executor</span><span class="o">.</span><span class="n">get_kv_cache_specs</span><span class="p">()</span>  <span class="c1">#获取模型每层需要的kvcache配置信息（24层）</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Profiles the peak memory usage of the model to determine how much</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># memory can be allocated for kv cache.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">available_gpu_memory</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_executor</span><span class="o">.</span><span class="n">determine_available_memory</span><span class="p">()</span> <span class="c1">#通过模拟一次前传，记录参数和激活值需要的显存容量 现有的显存容量-必要的显存容易=kvcache可使用显存大小</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">kv_cache_specs</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">available_gpu_memory</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># Get the kv cache tensor size</span>
+</span></span><span class="line"><span class="cl">        <span class="n">kv_cache_configs</span> <span class="o">=</span> <span class="p">[</span>
+</span></span><span class="line"><span class="cl">            <span class="n">get_kv_cache_config</span><span class="p">(</span><span class="n">vllm_config</span><span class="p">,</span> <span class="n">kv_cache_spec_one_worker</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                <span class="n">available_gpu_memory_one_worker</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="k">for</span> <span class="n">kv_cache_spec_one_worker</span><span class="p">,</span> <span class="n">available_gpu_memory_one_worker</span> <span class="ow">in</span>
+</span></span><span class="line"><span class="cl">            <span class="nb">zip</span><span class="p">(</span><span class="n">kv_cache_specs</span><span class="p">,</span> <span class="n">available_gpu_memory</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="p">]</span> <span class="c1">#得到kv_cache分配的配置</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Since we use a shared centralized controller, we need the</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># `kv_cache_config` to be consistent across all workers to make sure</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># all the memory operators can be applied to all workers.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">unify_kv_cache_configs</span><span class="p">(</span><span class="n">kv_cache_configs</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># All workers have the same kv_cache_config except layer names, so use</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># an arbitrary one to get the number of blocks.</span>
+</span></span><span class="line"><span class="cl">        <span class="k">assert</span> <span class="nb">all</span><span class="p">([</span>
+</span></span><span class="line"><span class="cl">            <span class="n">cfg</span><span class="o">.</span><span class="n">num_blocks</span> <span class="o">==</span> <span class="n">kv_cache_configs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">num_blocks</span>
+</span></span><span class="line"><span class="cl">            <span class="k">for</span> <span class="n">cfg</span> <span class="ow">in</span> <span class="n">kv_cache_configs</span>
+</span></span><span class="line"><span class="cl">        <span class="p">])</span>
+</span></span><span class="line"><span class="cl">        <span class="n">num_gpu_blocks</span> <span class="o">=</span> <span class="n">kv_cache_configs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">num_blocks</span>
+</span></span><span class="line"><span class="cl">        <span class="n">num_cpu_blocks</span> <span class="o">=</span> <span class="mi">0</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Initialize kv cache and warmup the execution</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">model_executor</span><span class="o">.</span><span class="n">initialize_from_config</span><span class="p">(</span><span class="n">kv_cache_configs</span><span class="p">)</span>  <span class="c1">#通过rpc进行kvcache空间的分配</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span>
+</span></span><span class="line"><span class="cl">        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">((</span><span class="s2">&#34;init engine (profile, create kv cache, &#34;</span>
+</span></span><span class="line"><span class="cl">                     <span class="s2">&#34;warmup model) took </span><span class="si">%.2f</span><span class="s2"> seconds&#34;</span><span class="p">),</span> <span class="n">elapsed</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="n">num_gpu_blocks</span><span class="p">,</span> <span class="n">num_cpu_blocks</span>  <span class="c1">#每层从gpu显存，cpu内存中获取的kvcache块数量</span>
+</span></span></code></pre></div><h6 id="4213-enginecore中实例化scheduler">4.2.1.3 EngineCore中实例化Scheduler</h6>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">class</span> <span class="nc">Scheduler</span><span class="p">(</span><span class="n">SchedulerInterface</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">scheduler_config</span><span class="p">:</span> <span class="n">SchedulerConfig</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">model_config</span><span class="p">:</span> <span class="n">ModelConfig</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">cache_config</span><span class="p">:</span> <span class="n">CacheConfig</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">lora_config</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">LoRAConfig</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">        <span class="n">speculative_config</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">SpeculativeConfig</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">        <span class="n">log_stats</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">structured_output_manager</span><span class="p">:</span> <span class="n">StructuredOutputManager</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_config</span> <span class="o">=</span> <span class="n">scheduler_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">cache_config</span> <span class="o">=</span> <span class="n">cache_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">lora_config</span> <span class="o">=</span> <span class="n">lora_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">speculative_config</span> <span class="o">=</span> <span class="n">speculative_config</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">log_stats</span> <span class="o">=</span> <span class="n">log_stats</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">structured_output_manager</span> <span class="o">=</span> <span class="n">structured_output_manager</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Scheduling constraints.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">max_num_running_reqs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_config</span><span class="o">.</span><span class="n">max_num_seqs</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">max_num_scheduled_tokens</span> <span class="o">=</span> \
+</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_config</span><span class="o">.</span><span class="n">max_num_batched_tokens</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">max_model_len</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_config</span><span class="o">.</span><span class="n">max_model_len</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="n">num_gpu_blocks</span> <span class="o">=</span> <span class="n">cache_config</span><span class="o">.</span><span class="n">num_gpu_blocks</span>
+</span></span><span class="line"><span class="cl">        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">num_gpu_blocks</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">and</span> <span class="n">num_gpu_blocks</span> <span class="o">&gt;</span> <span class="mi">0</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># Create the KV cache manager.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">kv_cache_manager</span> <span class="o">=</span> <span class="n">KVCacheManager</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">block_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">cache_config</span><span class="o">.</span><span class="n">block_size</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">num_gpu_blocks</span><span class="o">=</span><span class="n">num_gpu_blocks</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">max_model_len</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">max_model_len</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">sliding_window</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">cache_config</span><span class="o">.</span><span class="n">sliding_window</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">enable_caching</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">cache_config</span><span class="o">.</span><span class="n">enable_prefix_caching</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">log_stats</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">log_stats</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">block_size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache_config</span><span class="o">.</span><span class="n">block_size</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># req_id -&gt; Request</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">requests</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Request</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># Priority queues for requests.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">waiting</span><span class="p">:</span> <span class="n">deque</span><span class="p">[</span><span class="n">Request</span><span class="p">]</span> <span class="o">=</span> <span class="n">deque</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">running</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Request</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># The requests that have been scheduled and are being executed</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># by the executor.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">scheduled_req_ids</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># The request IDs that are finished in between the previous and the</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># current steps. This is used to notify the workers about the finished</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># requests so that they can free the cached states for those requests.</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># This is flushed at the end of each scheduling step.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">finished_req_ids</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># OPTIMIZATION: Cache the CachedRequestData objects to avoid creating</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># them at each scheduling step.</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># Request id -&gt; CachedRequestData</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_cached_reqs_data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">CachedRequestData</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Encoder-related.</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># Calculate encoder cache size if applicable</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># NOTE: For now we use the same budget for both compute and space.</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># This can be changed when we make encoder cache for embedding caching</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># across requests.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">encoder_compute_budget</span><span class="p">,</span> <span class="n">encoder_cache_size</span> <span class="o">=</span> <span class="n">compute_encoder_budget</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">model_config</span><span class="o">=</span><span class="n">model_config</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">scheduler_config</span><span class="o">=</span><span class="n">scheduler_config</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># NOTE(woosuk): Here, &#34;encoder&#34; includes the vision encoder (and</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># projector if needed). Currently, we assume that the encoder also</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># has the Transformer architecture (e.g., ViT).</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">max_num_encoder_input_tokens</span> <span class="o">=</span> <span class="n">encoder_compute_budget</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># NOTE: For the models without encoder (e.g., text-only models),</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># the encoder cache will not be initialized because cache size is 0</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># for these models.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">encoder_cache_manager</span> <span class="o">=</span> <span class="n">EncoderCacheManager</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">cache_size</span><span class="o">=</span><span class="n">encoder_cache_size</span><span class="p">)</span>
+</span></span></code></pre></div><h5 id="422-enginecoreproc">4.2.2 EngineCoreProc</h5>
+<p>llm.generate(prompts, sampling_params)</p>
+<p>生成输出结果</p>
+<p>流程：</p>
+<ol start="0">
+<li>
+<p>在生成llm时已经生成了llm_engine；llm_engine中已经生成了tokenizer，processor，output_processor，engine_core；engine_core中会开启EngineCore幕后进程，只是在等待接收请求</p>
+</li>
+<li>
+<p>预处理并发射：</p>
+</li>
+</ol>
+<p>1.1 llm进行 _validate_and_add_requests 和 _add_request，将请求一个个交给llm_engine处理</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">def</span> <span class="nf">_validate_and_add_requests</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">           <span class="bp">self</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">           <span class="n">prompts</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">PromptType</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">PromptType</span><span class="p">]],</span>
+</span></span><span class="line"><span class="cl">           <span class="n">params</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">SamplingParams</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">SamplingParams</span><span class="p">],</span> <span class="n">PoolingParams</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                         <span class="n">Sequence</span><span class="p">[</span><span class="n">PoolingParams</span><span class="p">]],</span>
+</span></span><span class="line"><span class="cl">           <span class="n">lora_request</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="n">LoRARequest</span><span class="p">],</span> <span class="n">LoRARequest</span><span class="p">]],</span>
+</span></span><span class="line"><span class="cl">           <span class="n">prompt_adapter_request</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PromptAdapterRequest</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">           <span class="n">guided_options</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">GuidedDecodingRequest</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">           <span class="n">priority</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">       <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">           <span class="k">if</span> <span class="n">guided_options</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">               <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                   <span class="s2">&#34;guided_options_request is deprecated, use &#34;</span>
+</span></span><span class="line"><span class="cl">                   <span class="s2">&#34;SamplingParams.guided_decoding instead&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                   <span class="ne">DeprecationWarning</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                   <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">               <span class="p">)</span>
+</span></span><span class="line"><span class="cl">   
+</span></span><span class="line"><span class="cl">           <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">prompts</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)):</span>
+</span></span><span class="line"><span class="cl">               <span class="c1"># Convert a single prompt to a list.</span>
+</span></span><span class="line"><span class="cl">               <span class="n">prompts</span> <span class="o">=</span> <span class="p">[</span><span class="n">prompts</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">   
+</span></span><span class="line"><span class="cl">           <span class="n">num_requests</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">prompts</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">           <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">)</span> <span class="o">!=</span> <span class="n">num_requests</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">               <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&#34;The lengths of prompts and params &#34;</span>
+</span></span><span class="line"><span class="cl">                                <span class="s2">&#34;must be the same.&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">           <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">lora_request</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                         <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">lora_request</span><span class="p">)</span> <span class="o">!=</span> <span class="n">num_requests</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">               <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&#34;The lengths of prompts and lora_request &#34;</span>
+</span></span><span class="line"><span class="cl">                                <span class="s2">&#34;must be the same.&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">   
+</span></span><span class="line"><span class="cl">           <span class="k">for</span> <span class="n">sp</span> <span class="ow">in</span> <span class="n">params</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="k">else</span> <span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="p">):</span>
+</span></span><span class="line"><span class="cl">               <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">sp</span><span class="p">,</span> <span class="n">SamplingParams</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">                   <span class="bp">self</span><span class="o">.</span><span class="n">_add_guided_params</span><span class="p">(</span><span class="n">sp</span><span class="p">,</span> <span class="n">guided_options</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">   
+</span></span><span class="line"><span class="cl">                   <span class="c1"># We only care about the final output</span>
+</span></span><span class="line"><span class="cl">                   <span class="n">sp</span><span class="o">.</span><span class="n">output_kind</span> <span class="o">=</span> <span class="n">RequestOutputKind</span><span class="o">.</span><span class="n">FINAL_ONLY</span>
+</span></span><span class="line"><span class="cl">   
+</span></span><span class="line"><span class="cl">           <span class="c1"># Add requests to the engine.   </span>
+</span></span><span class="line"><span class="cl">           <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">prompt</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">prompts</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">               <span class="bp">self</span><span class="o">.</span><span class="n">_add_request</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                   <span class="n">prompt</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                   <span class="n">params</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">)</span> <span class="k">else</span> <span class="n">params</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                   <span class="n">lora_request</span><span class="o">=</span><span class="n">lora_request</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                       <span class="n">lora_request</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">)</span> <span class="k">else</span> <span class="n">lora_request</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                   <span class="n">prompt_adapter_request</span><span class="o">=</span><span class="n">prompt_adapter_request</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                   <span class="n">priority</span><span class="o">=</span><span class="n">priority</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="n">priority</span> <span class="k">else</span> <span class="mi">0</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">               <span class="p">)</span>
+</span></span><span class="line"><span class="cl">   
+</span></span><span class="line"><span class="cl">   <span class="k">def</span> <span class="nf">_add_request</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">       <span class="bp">self</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">       <span class="n">prompt</span><span class="p">:</span> <span class="n">PromptType</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">       <span class="n">params</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">SamplingParams</span><span class="p">,</span> <span class="n">PoolingParams</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">       <span class="n">lora_request</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">LoRARequest</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">       <span class="n">prompt_adapter_request</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PromptAdapterRequest</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">       <span class="n">priority</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">   <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">       <span class="n">request_id</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">request_counter</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl">       <span class="bp">self</span><span class="o">.</span><span class="n">llm_engine</span><span class="o">.</span><span class="n">add_request</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">           <span class="n">request_id</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">           <span class="n">prompt</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">           <span class="n">params</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">           <span class="n">lora_request</span><span class="o">=</span><span class="n">lora_request</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">           <span class="n">prompt_adapter_request</span><span class="o">=</span><span class="n">prompt_adapter_request</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">           <span class="n">priority</span><span class="o">=</span><span class="n">priority</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">       <span class="p">)</span> 
+</span></span></code></pre></div><p>1.2 llm_engine进行add_request，其中包括利用processor将单个request prompt输入向量化并变成EngineCoreRequest；生成这个新EngineCoreRequest的状态并记录在OutputProcessor中；把EngineCoreRequest请求加到EngineCore</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">           <span class="k">def</span> <span class="nf">add_request</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                <span class="bp">self</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                <span class="n">request_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                <span class="n">prompt</span><span class="p">:</span> <span class="n">PromptType</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                <span class="n">params</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">SamplingParams</span><span class="p">,</span> <span class="n">PoolingParams</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">                <span class="n">arrival_time</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                <span class="n">lora_request</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">LoRARequest</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                <span class="n">trace_headers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                <span class="n">prompt_adapter_request</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PromptAdapterRequest</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                <span class="n">priority</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="c1"># Process raw inputs into the request.  利用processor将单个prompt输入向量化并变成EngineCoreRequest</span>
+</span></span><span class="line"><span class="cl">                <span class="n">request</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">processor</span><span class="o">.</span><span class="n">process_inputs</span><span class="p">(</span><span class="n">request_id</span><span class="p">,</span> <span class="n">prompt</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                                        <span class="n">arrival_time</span><span class="p">,</span> <span class="n">lora_request</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                                        <span class="n">trace_headers</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                                        <span class="n">prompt_adapter_request</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                                        <span class="n">priority</span><span class="p">)</span>  
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">                <span class="n">n</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">n</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">SamplingParams</span><span class="p">)</span> <span class="k">else</span> <span class="mi">1</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">                <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                    <span class="c1"># Make a new RequestState and queue. 生成这个新EngineCoreRequest的状态并记录在OutputProcessor中</span>
+</span></span><span class="line"><span class="cl">                    <span class="bp">self</span><span class="o">.</span><span class="n">output_processor</span><span class="o">.</span><span class="n">add_request</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                    <span class="c1"># Add the request to EngineCore.  把请求加到EngineCore</span>
+</span></span><span class="line"><span class="cl">                    <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">add_request</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                    <span class="k">return</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">                <span class="c1"># Fan out child requests (for n&gt;1).</span>
+</span></span><span class="line"><span class="cl">                <span class="n">parent_req</span> <span class="o">=</span> <span class="n">ParentRequest</span><span class="p">(</span><span class="n">request_id</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">                    <span class="n">request_id</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="n">parent_req</span><span class="o">.</span><span class="n">get_child_info</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                    <span class="n">child_request</span> <span class="o">=</span> <span class="n">request</span> <span class="k">if</span> <span class="n">idx</span> <span class="o">==</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">copy</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                    <span class="n">child_request</span><span class="o">.</span><span class="n">request_id</span> <span class="o">=</span> <span class="n">request_id</span>
+</span></span><span class="line"><span class="cl">                    <span class="n">child_request</span><span class="o">.</span><span class="n">sampling_params</span> <span class="o">=</span> <span class="n">params</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">                    <span class="c1"># Make a new RequestState and queue.</span>
+</span></span><span class="line"><span class="cl">                    <span class="bp">self</span><span class="o">.</span><span class="n">output_processor</span><span class="o">.</span><span class="n">add_request</span><span class="p">(</span><span class="n">child_request</span><span class="p">,</span> <span class="n">parent_req</span><span class="p">,</span> <span class="n">idx</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                    <span class="c1"># Add the request to EngineCore.</span>
+</span></span><span class="line"><span class="cl">                    <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">add_request</span><span class="p">(</span><span class="n">child_request</span><span class="p">)</span>
+</span></span></code></pre></div><ol start="2">
+<li>engine运行，outputs = self._run_engine(use_tqdm=use_tqdm). 每隔一段时间step一次，获取输入请求当前的推理结果并返回结果：</li>
+</ol>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RequestOutput</span><span class="p">]:</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">should_execute_dummy_batch</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">should_execute_dummy_batch</span> <span class="o">=</span> <span class="kc">False</span>
+</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">execute_dummy_batch</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">            <span class="k">return</span> <span class="p">[]</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># 1) Get EngineCoreOutput from the EngineCore.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">outputs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">get_output</span><span class="p">()</span>   <span class="c1">#单纯通过zmq通信库获取EngineCore进程的返回值EngineCoreOutput</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># 2) Process EngineCoreOutputs.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">processed_outputs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_processor</span><span class="o">.</span><span class="n">process_outputs</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">outputs</span><span class="o">.</span><span class="n">outputs</span><span class="p">)</span> 
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># 3) Abort any reqs that finished due to stop strings.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">abort_requests</span><span class="p">(</span><span class="n">processed_outputs</span><span class="o">.</span><span class="n">reqs_to_abort</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="n">processed_outputs</span><span class="o">.</span><span class="n">request_outputs</span>
+</span></span></code></pre></div><p>2.1 通过zmq通信库获取EngineCore进程的返回值EngineCoreOutput</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">get_output</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EngineCoreOutputs</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">outputs_queue</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+</span></span></code></pre></div><p>2.2 通过OutputProcessor更新请求当前状态，将EngineCoreOutput进行Detokenize，并把生成的token封装成RequestOutput</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">process_outputs</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">engine_core_outputs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">EngineCoreOutput</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">        <span class="n">engine_core_timestamp</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">iteration_stats</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">IterationStats</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">OutputProcessorOutput</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="s2">&#34;&#34;&#34;
+</span></span></span><span class="line"><span class="cl"><span class="s2">        Process the EngineCoreOutputs:
+</span></span></span><span class="line"><span class="cl"><span class="s2">        1) Compute stats for logging
+</span></span></span><span class="line"><span class="cl"><span class="s2">        2) Detokenize
+</span></span></span><span class="line"><span class="cl"><span class="s2">        3) Create and handle RequestOutput objects:
+</span></span></span><span class="line"><span class="cl"><span class="s2">            * If there is a queue (for usage with AsyncLLM), 
+</span></span></span><span class="line"><span class="cl"><span class="s2">              put the RequestOutput objects into the queue for
+</span></span></span><span class="line"><span class="cl"><span class="s2">              handling by the per-request generate() tasks.
+</span></span></span><span class="line"><span class="cl"><span class="s2">
+</span></span></span><span class="line"><span class="cl"><span class="s2">            * If there is no queue (for usage with LLMEngine), 
+</span></span></span><span class="line"><span class="cl"><span class="s2">              return a list of RequestOutput objects.
+</span></span></span><span class="line"><span class="cl"><span class="s2">
+</span></span></span><span class="line"><span class="cl"><span class="s2">        ****************** NOTE FOR DEVELOPERS ******************
+</span></span></span><span class="line"><span class="cl"><span class="s2">
+</span></span></span><span class="line"><span class="cl"><span class="s2">        vLLM V1 minimizes the number of python loops over the full
+</span></span></span><span class="line"><span class="cl"><span class="s2">        batch to ensure system overheads are minimized. This is the 
+</span></span></span><span class="line"><span class="cl"><span class="s2">        only function that should loop over EngineCoreOutputs.
+</span></span></span><span class="line"><span class="cl"><span class="s2">
+</span></span></span><span class="line"><span class="cl"><span class="s2">        If you need to touch every element of the batch, do it from
+</span></span></span><span class="line"><span class="cl"><span class="s2">        within the loop below.
+</span></span></span><span class="line"><span class="cl"><span class="s2">        
+</span></span></span><span class="line"><span class="cl"><span class="s2">        **********************************************************
+</span></span></span><span class="line"><span class="cl"><span class="s2">        &#34;&#34;&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="n">request_outputs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">RequestOutput</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+</span></span><span class="line"><span class="cl">        <span class="n">reqs_to_abort</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+</span></span><span class="line"><span class="cl">        <span class="k">for</span> <span class="n">engine_core_output</span> <span class="ow">in</span> <span class="n">engine_core_outputs</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="n">req_id</span> <span class="o">=</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">request_id</span>
+</span></span><span class="line"><span class="cl">            <span class="n">req_state</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">request_states</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">req_id</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="n">req_state</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="c1"># Ignore output for already-aborted request.</span>
+</span></span><span class="line"><span class="cl">                <span class="k">continue</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="c1"># 1) Compute stats for this iteration.</span>
+</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">_update_stats_from_output</span><span class="p">(</span><span class="n">req_state</span><span class="p">,</span> <span class="n">engine_core_output</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                           <span class="n">engine_core_timestamp</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                           <span class="n">iteration_stats</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="n">new_token_ids</span> <span class="o">=</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">new_token_ids</span>
+</span></span><span class="line"><span class="cl">            <span class="n">finish_reason</span> <span class="o">=</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">finish_reason</span>
+</span></span><span class="line"><span class="cl">            <span class="n">stop_reason</span> <span class="o">=</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">stop_reason</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="n">req_state</span><span class="o">.</span><span class="n">is_prefilling</span> <span class="o">=</span> <span class="kc">False</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="c1"># 2) Detokenize the token ids into text and perform stop checks.</span>
+</span></span><span class="line"><span class="cl">            <span class="n">stop_string</span> <span class="o">=</span> <span class="n">req_state</span><span class="o">.</span><span class="n">detokenizer</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                <span class="n">new_token_ids</span><span class="p">,</span> <span class="n">finish_reason</span> <span class="o">==</span> <span class="n">FinishReason</span><span class="o">.</span><span class="n">STOP</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="n">stop_string</span> <span class="ow">and</span> <span class="n">finish_reason</span> <span class="o">!=</span> <span class="n">FinishReason</span><span class="o">.</span><span class="n">STOP</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="n">finish_reason</span> <span class="o">=</span> <span class="n">FinishReason</span><span class="o">.</span><span class="n">STOP</span>
+</span></span><span class="line"><span class="cl">                <span class="n">stop_reason</span> <span class="o">=</span> <span class="n">stop_string</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="c1"># 3) Compute sample and prompt logprobs for request, if required.</span>
+</span></span><span class="line"><span class="cl">            <span class="n">req_state</span><span class="o">.</span><span class="n">logprobs_processor</span><span class="o">.</span><span class="n">update_from_output</span><span class="p">(</span><span class="n">engine_core_output</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="c1"># 4) Create and handle RequestOutput objects.</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="n">request_output</span> <span class="o">:=</span> <span class="n">req_state</span><span class="o">.</span><span class="n">make_request_output</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                    <span class="n">new_token_ids</span><span class="p">,</span> <span class="n">finish_reason</span><span class="p">,</span> <span class="n">stop_reason</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">                <span class="k">if</span> <span class="n">req_state</span><span class="o">.</span><span class="n">queue</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                    <span class="c1"># AsyncLLM: put into queue for handling by generate().</span>
+</span></span><span class="line"><span class="cl">                    <span class="n">req_state</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">request_output</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                <span class="k">else</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                    <span class="c1"># LLMEngine: return list of RequestOutputs.</span>
+</span></span><span class="line"><span class="cl">                    <span class="n">request_outputs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">request_output</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="c1"># Free completed requests.</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="n">finish_reason</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="bp">self</span><span class="o">.</span><span class="n">request_states</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">req_id</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                <span class="c1"># Remove parent request if applicable.</span>
+</span></span><span class="line"><span class="cl">                <span class="n">parent_req</span> <span class="o">=</span> <span class="n">req_state</span><span class="o">.</span><span class="n">parent_req</span>
+</span></span><span class="line"><span class="cl">                <span class="k">if</span> <span class="n">parent_req</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">parent_req</span><span class="o">.</span><span class="n">child_requests</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                    <span class="bp">self</span><span class="o">.</span><span class="n">parent_requests</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">parent_req</span><span class="o">.</span><span class="n">request_id</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                <span class="k">if</span> <span class="ow">not</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">finished</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                    <span class="c1"># If req not finished in EngineCore, but Detokenizer</span>
+</span></span><span class="line"><span class="cl">                    <span class="c1"># detected stop string, abort needed in EngineCore.</span>
+</span></span><span class="line"><span class="cl">                    <span class="n">reqs_to_abort</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">req_id</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">                <span class="c1"># Track per-request stats</span>
+</span></span><span class="line"><span class="cl">                <span class="bp">self</span><span class="o">.</span><span class="n">_update_stats_from_finished</span><span class="p">(</span><span class="n">req_state</span><span class="p">,</span> <span class="n">finish_reason</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                                 <span class="n">iteration_stats</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">lora_states</span><span class="o">.</span><span class="n">update_iteration_stats</span><span class="p">(</span><span class="n">iteration_stats</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="n">OutputProcessorOutput</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">request_outputs</span><span class="o">=</span><span class="n">request_outputs</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">reqs_to_abort</span><span class="o">=</span><span class="n">reqs_to_abort</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="p">)</span>
+</span></span></code></pre></div><p>2.3 对于已经生成stop string的请求，使用zmq通信库对EngineCore进程发送请求抛弃消息</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">abort_requests</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request_ids</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">request_ids</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">_send_input</span><span class="p">(</span><span class="n">EngineCoreRequestType</span><span class="o">.</span><span class="n">ABORT</span><span class="p">,</span> <span class="n">request_ids</span><span class="p">)</span>
+</span></span></code></pre></div><p>c</p>
+<ol start="3">
+<li>返回所有推理结果  return self.engine_class.validate_outputs(outputs, RequestOutput)</li>
+</ol>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">    <span class="nd">@classmethod</span>
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">validate_outputs</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">outputs</span><span class="p">,</span> <span class="n">output_type</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="n">outputs</span>
+</span></span></code></pre></div><p>b</p>
+<h1 id="参数">参数</h1>
+<p>block_size是单个block能装下多少个token的kvcache</p>
+
+            </div>
+        </article></main>
+</div>
+<footer class="footer">
+    <span class="footer_item"> </span>
+    &nbsp;
+
+    <div class="footer_social-icons">
+<a href="https://github.com/theflash010" target="_blank" rel="noopener noreferrer me"
+    title="Github">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+    stroke-linecap="round" stroke-linejoin="round">
+    <path
+        d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
+    </path>
+</svg>
+</a>
+<a href="https://space.bilibili.com/106734387?spm_id_from=333.1007.0.0" target="_blank" rel="noopener noreferrer me"
+    title="Bilibili">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1.3333" y="6" width="21.333" height="15.333" rx="4" ry="4"/>
+    <path d="m8 12.4v1.2"/>
+    <path d="m16 12.4v1.2"/>
+    <path d="m5.8853 2.6667 2.6667 2.6667"/>
+    <path d="m18.115 2.6667-2.6667 2.6667"/>
+</svg>
+</a>
+<a href="/index.xml" target="_blank" rel="noopener noreferrer me"
+    title="Rss">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+    stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 11a9 9 0 0 1 9 9" />
+    <path d="M4 4a16 16 0 0 1 16 16" />
+    <circle cx="5" cy="19" r="1" />
+</svg>
+</a>
+</div>
+    <small class="footer_copyright">
+        © 2025 Nan Z.
+        Powered by <a href="https://github.com/hugo-sid/hugo-blog-awesome" target="_blank" rel="noopener">Hugo blog awesome</a>.
+    </small>
+</footer><a href="#" title="Go to top" id="totop">
+    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" stroke="currentColor" viewBox="0 96 960 960">
+    <path d="M283 704.739 234.261 656 480 410.261 725.739 656 677 704.739l-197-197-197 197Z"/>
+</svg>
+
+</a>
+
+
+    
+
+
+
+
+    
+    
+        
+    
+
+    
+    
+        
+    
+
+
+
+    
+    <script src="https://theflash010.github.io/js/main.min.35f435a5d8eac613c52daa28d8af544a4512337d3e95236e4a4978417b8dcb2f.js" integrity="sha256-NfQ1pdjqxhPFLaoo2K9USkUSM30&#43;lSNuSkl4QXuNyy8="></script>
+
+    
+
+</body>
+</html>
