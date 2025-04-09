@@ -53,7 +53,7 @@
         },
         "datePublished": "2025-04-08",
         "description": "",
-        "wordCount":  2891 ,
+        "wordCount":  3319 ,
         "mainEntityOfPage": "True",
         "dateModified": "2025-04-08",
         "image": {
@@ -217,6 +217,26 @@ stroke-linejoin="round" class="feather feather-home">
         </li>
       </ul>
     </li>
+    <li><a href="#llmgenerate发生了什么">llm.generate发生了什么</a>
+      <ul>
+        <li><a href="#0">0.</a></li>
+        <li><a href="#1预处理并发射">1.预处理并发射：</a>
+          <ul>
+            <li><a href="#11">1.1</a></li>
+            <li><a href="#12">1.2</a></li>
+          </ul>
+        </li>
+        <li><a href="#2-engine运行">2. engine运行</a>
+          <ul>
+            <li><a href="#21">2.1</a></li>
+            <li><a href="#22">2.2</a></li>
+            <li><a href="#23">2.3</a></li>
+          </ul>
+        </li>
+        <li><a href="#3-返回所有推理结果">3. 返回所有推理结果</a></li>
+      </ul>
+    </li>
+    <li><a href="#参数">参数</a></li>
   </ul>
 </nav>
     </details>
@@ -477,7 +497,7 @@ stroke-linejoin="round" class="feather feather-home">
 </span></span><span class="line"><span class="cl">            <span class="n">input_path</span><span class="o">=</span><span class="n">input_path</span><span class="p">,</span>
 </span></span><span class="line"><span class="cl">            <span class="n">output_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">output_path</span><span class="p">,</span>
 </span></span><span class="line"><span class="cl">            <span class="n">process_name</span><span class="o">=</span><span class="s2">&#34;EngineCore&#34;</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">            <span class="n">target_fn</span><span class="o">=</span><span class="n">EngineCoreProc</span><span class="o">.</span><span class="n">run_engine_core</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">            <span class="n">target_fn</span><span class="o">=</span><span class="n">EngineCoreProc</span><span class="o">.</span><span class="n">run_engine_core</span><span class="p">,</span>   <span class="c1">#幕后进程运行EngineCoreProc.run_engine_core这个函数，会生成一个EngineCoreProc对象并执行engine_core.run_busy_loop()</span>
 </span></span><span class="line"><span class="cl">            <span class="n">process_kwargs</span><span class="o">=</span><span class="p">{</span>
 </span></span><span class="line"><span class="cl">                <span class="s2">&#34;vllm_config&#34;</span><span class="p">:</span> <span class="n">vllm_config</span><span class="p">,</span>
 </span></span><span class="line"><span class="cl">                <span class="s2">&#34;executor_class&#34;</span><span class="p">:</span> <span class="n">executor_class</span><span class="p">,</span>
@@ -540,7 +560,7 @@ stroke-linejoin="round" class="feather feather-home">
 </span></span><span class="line"><span class="cl">        <span class="c1"># Wait for startup.</span>
 </span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">reader</span><span class="o">.</span><span class="n">recv</span><span class="p">()[</span><span class="s2">&#34;status&#34;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&#34;READY&#34;</span><span class="p">:</span>
 </span></span><span class="line"><span class="cl">            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&#34;</span><span class="si">{</span><span class="n">process_name</span><span class="si">}</span><span class="s2"> initialization failed. &#34;</span>
-</span></span><span class="line"><span class="cl">                               <span class="s2">&#34;See root cause above.&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                               <span class="s2">&#34;See root cause above.&#34;</span><span class="p">)</span>  <span class="c1">#reader.recv() 是一个阻塞调用，它会一直等待，直到从pipe管道（或其他进程间通信机制）接收到数据为止</span>
 </span></span><span class="line"><span class="cl">
 </span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">shutdown</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 </span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_finalizer</span><span class="p">()</span>
@@ -557,12 +577,53 @@ stroke-linejoin="round" class="feather feather-home">
 </span></span><span class="line"><span class="cl">    <span class="k">assert</span> <span class="ow">not</span> <span class="n">_current_process</span><span class="o">.</span><span class="n">_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;daemon&#39;</span><span class="p">),</span> \
 </span></span><span class="line"><span class="cl">           <span class="s1">&#39;daemonic processes are not allowed to have children&#39;</span>
 </span></span><span class="line"><span class="cl">    <span class="n">_cleanup</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">    <span class="bp">self</span><span class="o">.</span><span class="n">_popen</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_Popen</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>  <span class="c1">#这里启动了新的进程，同时生成一个EngineCoreProc对象</span>
+</span></span><span class="line"><span class="cl">    <span class="bp">self</span><span class="o">.</span><span class="n">_popen</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_Popen</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>  <span class="c1">#这里启动了新的进程，运行EngineCoreProc.run_engine_core函数</span>
 </span></span><span class="line"><span class="cl">    <span class="bp">self</span><span class="o">.</span><span class="n">_sentinel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_popen</span><span class="o">.</span><span class="n">sentinel</span>
 </span></span><span class="line"><span class="cl">    <span class="c1"># Avoid a refcycle if the target function holds an indirect</span>
 </span></span><span class="line"><span class="cl">    <span class="c1"># reference to the process object (see bpo-30775)</span>
 </span></span><span class="line"><span class="cl">    <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_target</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_args</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kwargs</span>
 </span></span><span class="line"><span class="cl">    <span class="n">_children</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="c1">#将当前Process实例添加到全局集合_children中，防止僵尸进程</span>
+</span></span><span class="line"><span class="cl">    
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="nd">@staticmethod</span>
+</span></span><span class="line"><span class="cl"><span class="k">def</span> <span class="nf">run_engine_core</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">    <span class="s2">&#34;&#34;&#34;Launch EngineCore busy loop in background process.&#34;&#34;&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="c1"># Signal handler used for graceful termination.</span>
+</span></span><span class="line"><span class="cl">    <span class="c1"># SystemExit exception is only raised once to allow this and worker</span>
+</span></span><span class="line"><span class="cl">    <span class="c1"># processes to terminate without error</span>
+</span></span><span class="line"><span class="cl">    <span class="n">shutdown_requested</span> <span class="o">=</span> <span class="kc">False</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="c1"># Ensure we can serialize transformer config after spawning</span>
+</span></span><span class="line"><span class="cl">    <span class="n">maybe_register_config_serialize_by_value</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">signal_handler</span><span class="p">(</span><span class="n">signum</span><span class="p">,</span> <span class="n">frame</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">        <span class="k">nonlocal</span> <span class="n">shutdown_requested</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="ow">not</span> <span class="n">shutdown_requested</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="n">shutdown_requested</span> <span class="o">=</span> <span class="kc">True</span>
+</span></span><span class="line"><span class="cl">            <span class="k">raise</span> <span class="ne">SystemExit</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="c1"># Either SIGTERM or SIGINT will terminate the engine_core</span>
+</span></span><span class="line"><span class="cl">    <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGTERM</span><span class="p">,</span> <span class="n">signal_handler</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGINT</span><span class="p">,</span> <span class="n">signal_handler</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="n">parent_process</span> <span class="o">=</span> <span class="n">psutil</span><span class="o">.</span><span class="n">Process</span><span class="p">()</span><span class="o">.</span><span class="n">parent</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">    <span class="n">engine_core</span> <span class="o">=</span> <span class="kc">None</span>
+</span></span><span class="line"><span class="cl">    <span class="k">try</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="n">engine_core</span> <span class="o">=</span> <span class="n">EngineCoreProc</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>  <span class="c1">#在这里生成EngineCoreProc对象</span>
+</span></span><span class="line"><span class="cl">        <span class="n">engine_core</span><span class="o">.</span><span class="n">run_busy_loop</span><span class="p">()</span> <span class="c1">#执行run循环</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">except</span> <span class="ne">SystemExit</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&#34;EngineCore interrupted.&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="n">traceback</span> <span class="o">=</span> <span class="n">get_exception_traceback</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&#34;EngineCore hit an exception: </span><span class="si">%s</span><span class="s2">&#34;</span><span class="p">,</span> <span class="n">traceback</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="n">parent_process</span><span class="o">.</span><span class="n">send_signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGUSR1</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">finally</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">engine_core</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="n">engine_core</span><span class="o">.</span><span class="n">shutdown</span><span class="p">()</span>
 </span></span></code></pre></div><h5 id="421-enginecore">4.2.1 EngineCore</h5>
 <p>EngineCoreProc继承于EngineCore类，下面先介绍EngineCore类的具体内容：</p>
 <div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">class</span> <span class="nc">EngineCore</span><span class="p">:</span>
@@ -843,18 +904,108 @@ stroke-linejoin="round" class="feather feather-home">
 </span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">encoder_cache_manager</span> <span class="o">=</span> <span class="n">EncoderCacheManager</span><span class="p">(</span>
 </span></span><span class="line"><span class="cl">            <span class="n">cache_size</span><span class="o">=</span><span class="n">encoder_cache_size</span><span class="p">)</span>
 </span></span></code></pre></div><h5 id="422-enginecoreproc">4.2.2 EngineCoreProc</h5>
+<p>EngineCoreProc除了初始化父类EngineCore外，还会开启两个子线程，分别与SyncMPClient进程交互，接收请求和输出请求结果</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">class</span> <span class="nc">EngineCoreProc</span><span class="p">(</span><span class="n">EngineCore</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">    <span class="s2">&#34;&#34;&#34;ZMQ-wrapper for running EngineCore in background process.&#34;&#34;&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">input_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">ready_pipe</span><span class="p">:</span> <span class="n">Connection</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">vllm_config</span><span class="p">:</span> <span class="n">VllmConfig</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">executor_class</span><span class="p">:</span> <span class="nb">type</span><span class="p">[</span><span class="n">Executor</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">        <span class="n">log_stats</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="p">):</span>
+</span></span><span class="line"><span class="cl">        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">vllm_config</span><span class="p">,</span> <span class="n">executor_class</span><span class="p">,</span> <span class="n">log_stats</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Background Threads and Queues for IO. These enable us to</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># overlap ZMQ socket IO with GPU since they release the GIL,</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># and to overlap some serialization/deserialization with the</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># model forward pass.</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># Threads handle Socket &lt;-&gt; Queues and core_busy_loop uses Queue.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">input_queue</span><span class="p">:</span> <span class="n">queue</span><span class="o">.</span><span class="n">Queue</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">EngineCoreRequestType</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                            <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">Queue</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">output_queue</span><span class="p">:</span> <span class="n">queue</span><span class="o">.</span><span class="n">Queue</span><span class="p">[</span><span class="n">EngineCoreOutputs</span><span class="p">]</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">Queue</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">        <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">process_input_socket</span><span class="p">,</span>  
+</span></span><span class="line"><span class="cl">                         <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">input_path</span><span class="p">,</span> <span class="p">),</span>  	<span class="c1">#zmq通信的输入路径是在SyncMPClient中提前定义好的</span>
+</span></span><span class="line"><span class="cl">                         <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>   <span class="c1">#开启获取请求子线程</span>
+</span></span><span class="line"><span class="cl">        <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">process_output_socket</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                         <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="p">),</span>   <span class="c1">#zmq通信的输出路径是在SyncMPClient中提前定义好的</span>
+</span></span><span class="line"><span class="cl">                         <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>   <span class="c1">#开启输出请求结果子线程</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Send Readiness signal to EngineClient.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">ready_pipe</span><span class="o">.</span><span class="n">send</span><span class="p">({</span><span class="s2">&#34;status&#34;</span><span class="p">:</span> <span class="s2">&#34;READY&#34;</span><span class="p">})</span>  <span class="c1">#给BackgroundProcHandle中init函数中的pipe管道发送&#39;READY&#39;信号，让主进程继续执行，子进程进行run_busy_loop循环</span>
+</span></span><span class="line"><span class="cl">        
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">process_input_socket</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">    <span class="s2">&#34;&#34;&#34;Input socket IO thread.&#34;&#34;&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="c1"># Msgpack serialization decoding.</span>
+</span></span><span class="line"><span class="cl">    <span class="n">add_request_decoder</span> <span class="o">=</span> <span class="n">MsgpackDecoder</span><span class="p">(</span><span class="n">EngineCoreRequest</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="n">generic_decoder</span> <span class="o">=</span> <span class="n">MsgpackDecoder</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">with</span> <span class="n">zmq_socket_ctx</span><span class="p">(</span><span class="n">input_path</span><span class="p">,</span> <span class="n">zmq</span><span class="o">.</span><span class="n">constants</span><span class="o">.</span><span class="n">PULL</span><span class="p">)</span> <span class="k">as</span> <span class="n">socket</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="c1"># (RequestType, RequestData)</span>
+</span></span><span class="line"><span class="cl">            <span class="n">type_frame</span><span class="p">,</span> <span class="n">data_frame</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">recv_multipart</span><span class="p">(</span><span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="n">request_type</span> <span class="o">=</span> <span class="n">EngineCoreRequestType</span><span class="p">(</span><span class="nb">bytes</span><span class="p">(</span><span class="n">type_frame</span><span class="o">.</span><span class="n">buffer</span><span class="p">))</span>  <span class="c1">#将zmq帧转为二进制数据通过类型解析，获取请求类型</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="c1"># Deserialize the request data.</span>
+</span></span><span class="line"><span class="cl">            <span class="n">decoder</span> <span class="o">=</span> <span class="n">add_request_decoder</span> <span class="k">if</span> <span class="p">(</span>
+</span></span><span class="line"><span class="cl">                <span class="n">request_type</span>
+</span></span><span class="line"><span class="cl">                <span class="o">==</span> <span class="n">EngineCoreRequestType</span><span class="o">.</span><span class="n">ADD</span><span class="p">)</span> <span class="k">else</span> <span class="n">generic_decoder</span>   <span class="c1">#确定数据帧使用哪种decoder</span>
+</span></span><span class="line"><span class="cl">            <span class="n">request</span> <span class="o">=</span> <span class="n">decoder</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">data_frame</span><span class="o">.</span><span class="n">buffer</span><span class="p">)</span>  <span class="c1">#解析请求</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="c1"># Push to input queue for core busy loop.</span>
+</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">input_queue</span><span class="o">.</span><span class="n">put_nowait</span><span class="p">((</span><span class="n">request_type</span><span class="p">,</span> <span class="n">request</span><span class="p">))</span> <span class="c1">#put_nowait非阻塞：如果队列已满，立即抛出 queue.Full 异常，不等待</span>
+</span></span><span class="line"><span class="cl">            
+</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">process_output_socket</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">        <span class="s2">&#34;&#34;&#34;Output socket IO thread.&#34;&#34;&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Msgpack serialization encoding.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">encoder</span> <span class="o">=</span> <span class="n">MsgpackEncoder</span><span class="p">()</span>   <span class="c1">#编码器将数据类型转化为二进制源码</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># Reuse send buffer.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">buffer</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="k">with</span> <span class="n">zmq_socket_ctx</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="n">zmq</span><span class="o">.</span><span class="n">constants</span><span class="o">.</span><span class="n">PUSH</span><span class="p">)</span> <span class="k">as</span> <span class="n">socket</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="n">outputs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_queue</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">                <span class="n">encoder</span><span class="o">.</span><span class="n">encode_into</span><span class="p">(</span><span class="n">outputs</span><span class="p">,</span> <span class="n">buffer</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                <span class="n">socket</span><span class="o">.</span><span class="n">send_multipart</span><span class="p">((</span><span class="n">buffer</span><span class="p">,</span> <span class="p">),</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span></span></code></pre></div><p>EngineCoreProc中run_busy_loop的执行流程：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">run_busy_loop</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">        <span class="s2">&#34;&#34;&#34;Core busy loop of the EngineCore.&#34;&#34;&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="n">step_fn</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">step</span>
+</span></span><span class="line"><span class="cl">                   <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_queue</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">step_with_batch_queue</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">        <span class="c1"># Loop until process is sent a SIGINT or SIGTERM</span>
+</span></span><span class="line"><span class="cl">        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="c1"># 1) Poll the input queue until there is work to do.</span>
+</span></span><span class="line"><span class="cl">            <span class="k">while</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">has_requests</span><span class="p">():</span>  <span class="c1">#Scheduler中没需要处理的请求就一直循环，直到有请求</span>
+</span></span><span class="line"><span class="cl">                <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&#34;EngineCore busy loop waiting.&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">                <span class="n">req</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_queue</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>  <span class="c1">#如果没有请求，这里会进行阻塞，从而减少资源浪费</span>
+</span></span><span class="line"><span class="cl">                <span class="bp">self</span><span class="o">.</span><span class="n">_handle_client_request</span><span class="p">(</span><span class="o">*</span><span class="n">req</span><span class="p">)</span>  <span class="c1">#处理EngineCoreClient发送的请求，Scheduler将请求加入队列</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="c1"># 2) Handle any new client requests.  现在Scheduler中有请求了</span>
+</span></span><span class="line"><span class="cl">            <span class="k">while</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_queue</span><span class="o">.</span><span class="n">empty</span><span class="p">():</span>
+</span></span><span class="line"><span class="cl">                <span class="n">req</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_queue</span><span class="o">.</span><span class="n">get_nowait</span><span class="p">()</span>  <span class="c1">#这里已经有请求了，所以使用的非阻塞的get_nowait()快速处理这些新请求，1和2分开的目的是减少资源浪费</span>
+</span></span><span class="line"><span class="cl">                <span class="bp">self</span><span class="o">.</span><span class="n">_handle_client_request</span><span class="p">(</span><span class="o">*</span><span class="n">req</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="c1"># 3) Step the engine core.</span>
+</span></span><span class="line"><span class="cl">            <span class="n">outputs</span> <span class="o">=</span> <span class="n">step_fn</span><span class="p">()</span>  <span class="c1">#进行一次推理，让Scheduler生成调度安排，利用调度安排进行推理执行，更新结果，返回推理output</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">            <span class="c1"># 4) Put EngineCoreOutputs into the output queue.</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="n">outputs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="bp">self</span><span class="o">.</span><span class="n">output_queue</span><span class="o">.</span><span class="n">put_nowait</span><span class="p">(</span><span class="n">outputs</span><span class="p">)</span>
+</span></span></code></pre></div><h2 id="llmgenerate发生了什么">llm.generate发生了什么</h2>
 <p>llm.generate(prompts, sampling_params)</p>
-<p>生成输出结果</p>
 <p>流程：</p>
-<ol start="0">
-<li>
+<h3 id="0">0.</h3>
 <p>在生成llm时已经生成了llm_engine；llm_engine中已经生成了tokenizer，processor，output_processor，engine_core；engine_core中会开启EngineCore幕后进程，只是在等待接收请求</p>
-</li>
-<li>
-<p>预处理并发射：</p>
-</li>
-</ol>
-<p>1.1 llm进行 _validate_and_add_requests 和 _add_request，将请求一个个交给llm_engine处理</p>
+<h3 id="1预处理并发射">1.预处理并发射：</h3>
+<h4 id="11">1.1</h4>
+<p>llm进行 _validate_and_add_requests 和 _add_request，将请求一个个交给llm_engine处理</p>
 <div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">def</span> <span class="nf">_validate_and_add_requests</span><span class="p">(</span>
 </span></span><span class="line"><span class="cl">           <span class="bp">self</span><span class="p">,</span>
 </span></span><span class="line"><span class="cl">           <span class="n">prompts</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">PromptType</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">PromptType</span><span class="p">]],</span>
@@ -921,177 +1072,178 @@ stroke-linejoin="round" class="feather feather-home">
 </span></span><span class="line"><span class="cl">           <span class="n">prompt_adapter_request</span><span class="o">=</span><span class="n">prompt_adapter_request</span><span class="p">,</span>
 </span></span><span class="line"><span class="cl">           <span class="n">priority</span><span class="o">=</span><span class="n">priority</span><span class="p">,</span>
 </span></span><span class="line"><span class="cl">       <span class="p">)</span> 
-</span></span></code></pre></div><p>1.2 llm_engine进行add_request，其中包括利用processor将单个request prompt输入向量化并变成EngineCoreRequest；生成这个新EngineCoreRequest的状态并记录在OutputProcessor中；把EngineCoreRequest请求加到EngineCore</p>
-<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">           <span class="k">def</span> <span class="nf">add_request</span><span class="p">(</span>
-</span></span><span class="line"><span class="cl">                <span class="bp">self</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">                <span class="n">request_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">                <span class="n">prompt</span><span class="p">:</span> <span class="n">PromptType</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">                <span class="n">params</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">SamplingParams</span><span class="p">,</span> <span class="n">PoolingParams</span><span class="p">],</span>
-</span></span><span class="line"><span class="cl">                <span class="n">arrival_time</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">                <span class="n">lora_request</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">LoRARequest</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">                <span class="n">trace_headers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">                <span class="n">prompt_adapter_request</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PromptAdapterRequest</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">                <span class="n">priority</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">            <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">                <span class="c1"># Process raw inputs into the request.  利用processor将单个prompt输入向量化并变成EngineCoreRequest</span>
-</span></span><span class="line"><span class="cl">                <span class="n">request</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">processor</span><span class="o">.</span><span class="n">process_inputs</span><span class="p">(</span><span class="n">request_id</span><span class="p">,</span> <span class="n">prompt</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">                                                        <span class="n">arrival_time</span><span class="p">,</span> <span class="n">lora_request</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">                                                        <span class="n">trace_headers</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">                                                        <span class="n">prompt_adapter_request</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">                                                        <span class="n">priority</span><span class="p">)</span>  
+</span></span></code></pre></div><h4 id="12">1.2</h4>
+<p>llm_engine进行add_request，其中包括利用processor将单个request prompt输入向量化并变成EngineCoreRequest；生成这个新EngineCoreRequest的状态并记录在OutputProcessor中；把EngineCoreRequest请求加到EngineCore</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">def</span> <span class="nf">add_request</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">    <span class="bp">self</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="n">request_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="n">prompt</span><span class="p">:</span> <span class="n">PromptType</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="n">params</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">SamplingParams</span><span class="p">,</span> <span class="n">PoolingParams</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">    <span class="n">arrival_time</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="n">lora_request</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">LoRARequest</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="n">trace_headers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="n">prompt_adapter_request</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PromptAdapterRequest</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="n">priority</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">    <span class="c1"># Process raw inputs into the request.  利用processor将单个prompt输入向量化并变成EngineCoreRequest</span>
+</span></span><span class="line"><span class="cl">    <span class="n">request</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">processor</span><span class="o">.</span><span class="n">process_inputs</span><span class="p">(</span><span class="n">request_id</span><span class="p">,</span> <span class="n">prompt</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                            <span class="n">arrival_time</span><span class="p">,</span> <span class="n">lora_request</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                            <span class="n">trace_headers</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                            <span class="n">prompt_adapter_request</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                            <span class="n">priority</span><span class="p">)</span>  
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">                <span class="n">n</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">n</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">SamplingParams</span><span class="p">)</span> <span class="k">else</span> <span class="mi">1</span>
+</span></span><span class="line"><span class="cl">    <span class="n">n</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">n</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">SamplingParams</span><span class="p">)</span> <span class="k">else</span> <span class="mi">1</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">                <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">                    <span class="c1"># Make a new RequestState and queue. 生成这个新EngineCoreRequest的状态并记录在OutputProcessor中</span>
-</span></span><span class="line"><span class="cl">                    <span class="bp">self</span><span class="o">.</span><span class="n">output_processor</span><span class="o">.</span><span class="n">add_request</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">                    <span class="c1"># Add the request to EngineCore.  把请求加到EngineCore</span>
-</span></span><span class="line"><span class="cl">                    <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">add_request</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">                    <span class="k">return</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># Make a new RequestState and queue. 生成这个新EngineCoreRequest的状态并记录在OutputProcessor中</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">output_processor</span><span class="o">.</span><span class="n">add_request</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># Add the request to EngineCore.  把请求加到EngineCore</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">add_request</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">return</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">                <span class="c1"># Fan out child requests (for n&gt;1).</span>
-</span></span><span class="line"><span class="cl">                <span class="n">parent_req</span> <span class="o">=</span> <span class="n">ParentRequest</span><span class="p">(</span><span class="n">request_id</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">                <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
-</span></span><span class="line"><span class="cl">                    <span class="n">request_id</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="n">parent_req</span><span class="o">.</span><span class="n">get_child_info</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">                    <span class="n">child_request</span> <span class="o">=</span> <span class="n">request</span> <span class="k">if</span> <span class="n">idx</span> <span class="o">==</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">copy</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">                    <span class="n">child_request</span><span class="o">.</span><span class="n">request_id</span> <span class="o">=</span> <span class="n">request_id</span>
-</span></span><span class="line"><span class="cl">                    <span class="n">child_request</span><span class="o">.</span><span class="n">sampling_params</span> <span class="o">=</span> <span class="n">params</span>
+</span></span><span class="line"><span class="cl">    <span class="c1"># Fan out child requests (for n&gt;1).</span>
+</span></span><span class="line"><span class="cl">    <span class="n">parent_req</span> <span class="o">=</span> <span class="n">ParentRequest</span><span class="p">(</span><span class="n">request_id</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">        <span class="n">request_id</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="n">parent_req</span><span class="o">.</span><span class="n">get_child_info</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="n">child_request</span> <span class="o">=</span> <span class="n">request</span> <span class="k">if</span> <span class="n">idx</span> <span class="o">==</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">copy</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="n">child_request</span><span class="o">.</span><span class="n">request_id</span> <span class="o">=</span> <span class="n">request_id</span>
+</span></span><span class="line"><span class="cl">        <span class="n">child_request</span><span class="o">.</span><span class="n">sampling_params</span> <span class="o">=</span> <span class="n">params</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">                    <span class="c1"># Make a new RequestState and queue.</span>
-</span></span><span class="line"><span class="cl">                    <span class="bp">self</span><span class="o">.</span><span class="n">output_processor</span><span class="o">.</span><span class="n">add_request</span><span class="p">(</span><span class="n">child_request</span><span class="p">,</span> <span class="n">parent_req</span><span class="p">,</span> <span class="n">idx</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">                    <span class="c1"># Add the request to EngineCore.</span>
-</span></span><span class="line"><span class="cl">                    <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">add_request</span><span class="p">(</span><span class="n">child_request</span><span class="p">)</span>
-</span></span></code></pre></div><ol start="2">
-<li>engine运行，outputs = self._run_engine(use_tqdm=use_tqdm). 每隔一段时间step一次，获取输入请求当前的推理结果并返回结果：</li>
-</ol>
-<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RequestOutput</span><span class="p">]:</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># Make a new RequestState and queue.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">output_processor</span><span class="o">.</span><span class="n">add_request</span><span class="p">(</span><span class="n">child_request</span><span class="p">,</span> <span class="n">parent_req</span><span class="p">,</span> <span class="n">idx</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># Add the request to EngineCore.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">add_request</span><span class="p">(</span><span class="n">child_request</span><span class="p">)</span>
+</span></span></code></pre></div><h3 id="2-engine运行">2. engine运行</h3>
+<p>outputs = self._run_engine(use_tqdm=use_tqdm). 每隔一段时间step一次，获取输入请求当前的推理结果并返回结果：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RequestOutput</span><span class="p">]:</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">should_execute_dummy_batch</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">should_execute_dummy_batch</span> <span class="o">=</span> <span class="kc">False</span>
-</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">execute_dummy_batch</span><span class="p">()</span>
-</span></span><span class="line"><span class="cl">            <span class="k">return</span> <span class="p">[]</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">should_execute_dummy_batch</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">should_execute_dummy_batch</span> <span class="o">=</span> <span class="kc">False</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">execute_dummy_batch</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="p">[]</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">        <span class="c1"># 1) Get EngineCoreOutput from the EngineCore.</span>
-</span></span><span class="line"><span class="cl">        <span class="n">outputs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">get_output</span><span class="p">()</span>   <span class="c1">#单纯通过zmq通信库获取EngineCore进程的返回值EngineCoreOutput</span>
+</span></span><span class="line"><span class="cl">    <span class="c1"># 1) Get EngineCoreOutput from the EngineCore.</span>
+</span></span><span class="line"><span class="cl">    <span class="n">outputs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">get_output</span><span class="p">()</span>   <span class="c1">#单纯通过zmq通信库获取EngineCore进程的返回值EngineCoreOutput</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">        <span class="c1"># 2) Process EngineCoreOutputs.</span>
-</span></span><span class="line"><span class="cl">        <span class="n">processed_outputs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_processor</span><span class="o">.</span><span class="n">process_outputs</span><span class="p">(</span>
-</span></span><span class="line"><span class="cl">            <span class="n">outputs</span><span class="o">.</span><span class="n">outputs</span><span class="p">)</span> 
+</span></span><span class="line"><span class="cl">    <span class="c1"># 2) Process EngineCoreOutputs.</span>
+</span></span><span class="line"><span class="cl">    <span class="n">processed_outputs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_processor</span><span class="o">.</span><span class="n">process_outputs</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">        <span class="n">outputs</span><span class="o">.</span><span class="n">outputs</span><span class="p">)</span> 
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">        <span class="c1"># 3) Abort any reqs that finished due to stop strings.</span>
-</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">abort_requests</span><span class="p">(</span><span class="n">processed_outputs</span><span class="o">.</span><span class="n">reqs_to_abort</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="c1"># 3) Abort any reqs that finished due to stop strings.</span>
+</span></span><span class="line"><span class="cl">    <span class="bp">self</span><span class="o">.</span><span class="n">engine_core</span><span class="o">.</span><span class="n">abort_requests</span><span class="p">(</span><span class="n">processed_outputs</span><span class="o">.</span><span class="n">reqs_to_abort</span><span class="p">)</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="n">processed_outputs</span><span class="o">.</span><span class="n">request_outputs</span>
-</span></span></code></pre></div><p>2.1 通过zmq通信库获取EngineCore进程的返回值EngineCoreOutput</p>
-<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">get_output</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EngineCoreOutputs</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">outputs_queue</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
-</span></span></code></pre></div><p>2.2 通过OutputProcessor更新请求当前状态，将EngineCoreOutput进行Detokenize，并把生成的token封装成RequestOutput</p>
-<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">process_outputs</span><span class="p">(</span>
-</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">        <span class="n">engine_core_outputs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">EngineCoreOutput</span><span class="p">],</span>
-</span></span><span class="line"><span class="cl">        <span class="n">engine_core_timestamp</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">        <span class="n">iteration_stats</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">IterationStats</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">OutputProcessorOutput</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">        <span class="s2">&#34;&#34;&#34;
-</span></span></span><span class="line"><span class="cl"><span class="s2">        Process the EngineCoreOutputs:
-</span></span></span><span class="line"><span class="cl"><span class="s2">        1) Compute stats for logging
-</span></span></span><span class="line"><span class="cl"><span class="s2">        2) Detokenize
-</span></span></span><span class="line"><span class="cl"><span class="s2">        3) Create and handle RequestOutput objects:
-</span></span></span><span class="line"><span class="cl"><span class="s2">            * If there is a queue (for usage with AsyncLLM), 
-</span></span></span><span class="line"><span class="cl"><span class="s2">              put the RequestOutput objects into the queue for
-</span></span></span><span class="line"><span class="cl"><span class="s2">              handling by the per-request generate() tasks.
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="n">processed_outputs</span><span class="o">.</span><span class="n">request_outputs</span>
+</span></span></code></pre></div><h4 id="21">2.1</h4>
+<p>通过zmq通信库获取EngineCore进程的返回值EngineCoreOutput</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">def</span> <span class="nf">get_output</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EngineCoreOutputs</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">outputs_queue</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+</span></span></code></pre></div><h4 id="22">2.2</h4>
+<p>通过OutputProcessor更新请求当前状态，将EngineCoreOutput进行Detokenize，并把生成的token封装成RequestOutput</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">def</span> <span class="nf">process_outputs</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">    <span class="bp">self</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="n">engine_core_outputs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">EngineCoreOutput</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">    <span class="n">engine_core_timestamp</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="n">iteration_stats</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">IterationStats</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">OutputProcessorOutput</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">    <span class="s2">&#34;&#34;&#34;
+</span></span></span><span class="line"><span class="cl"><span class="s2">    Process the EngineCoreOutputs:
+</span></span></span><span class="line"><span class="cl"><span class="s2">    1) Compute stats for logging
+</span></span></span><span class="line"><span class="cl"><span class="s2">    2) Detokenize
+</span></span></span><span class="line"><span class="cl"><span class="s2">    3) Create and handle RequestOutput objects:
+</span></span></span><span class="line"><span class="cl"><span class="s2">        * If there is a queue (for usage with AsyncLLM), 
+</span></span></span><span class="line"><span class="cl"><span class="s2">          put the RequestOutput objects into the queue for
+</span></span></span><span class="line"><span class="cl"><span class="s2">          handling by the per-request generate() tasks.
 </span></span></span><span class="line"><span class="cl"><span class="s2">
-</span></span></span><span class="line"><span class="cl"><span class="s2">            * If there is no queue (for usage with LLMEngine), 
-</span></span></span><span class="line"><span class="cl"><span class="s2">              return a list of RequestOutput objects.
+</span></span></span><span class="line"><span class="cl"><span class="s2">        * If there is no queue (for usage with LLMEngine), 
+</span></span></span><span class="line"><span class="cl"><span class="s2">          return a list of RequestOutput objects.
 </span></span></span><span class="line"><span class="cl"><span class="s2">
-</span></span></span><span class="line"><span class="cl"><span class="s2">        ****************** NOTE FOR DEVELOPERS ******************
+</span></span></span><span class="line"><span class="cl"><span class="s2">    ****************** NOTE FOR DEVELOPERS ******************
 </span></span></span><span class="line"><span class="cl"><span class="s2">
-</span></span></span><span class="line"><span class="cl"><span class="s2">        vLLM V1 minimizes the number of python loops over the full
-</span></span></span><span class="line"><span class="cl"><span class="s2">        batch to ensure system overheads are minimized. This is the 
-</span></span></span><span class="line"><span class="cl"><span class="s2">        only function that should loop over EngineCoreOutputs.
+</span></span></span><span class="line"><span class="cl"><span class="s2">    vLLM V1 minimizes the number of python loops over the full
+</span></span></span><span class="line"><span class="cl"><span class="s2">    batch to ensure system overheads are minimized. This is the 
+</span></span></span><span class="line"><span class="cl"><span class="s2">    only function that should loop over EngineCoreOutputs.
 </span></span></span><span class="line"><span class="cl"><span class="s2">
-</span></span></span><span class="line"><span class="cl"><span class="s2">        If you need to touch every element of the batch, do it from
-</span></span></span><span class="line"><span class="cl"><span class="s2">        within the loop below.
-</span></span></span><span class="line"><span class="cl"><span class="s2">        
-</span></span></span><span class="line"><span class="cl"><span class="s2">        **********************************************************
-</span></span></span><span class="line"><span class="cl"><span class="s2">        &#34;&#34;&#34;</span>
+</span></span></span><span class="line"><span class="cl"><span class="s2">    If you need to touch every element of the batch, do it from
+</span></span></span><span class="line"><span class="cl"><span class="s2">    within the loop below.
+</span></span></span><span class="line"><span class="cl"><span class="s2">
+</span></span></span><span class="line"><span class="cl"><span class="s2">    **********************************************************
+</span></span></span><span class="line"><span class="cl"><span class="s2">    &#34;&#34;&#34;</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">        <span class="n">request_outputs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">RequestOutput</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-</span></span><span class="line"><span class="cl">        <span class="n">reqs_to_abort</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-</span></span><span class="line"><span class="cl">        <span class="k">for</span> <span class="n">engine_core_output</span> <span class="ow">in</span> <span class="n">engine_core_outputs</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">            <span class="n">req_id</span> <span class="o">=</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">request_id</span>
-</span></span><span class="line"><span class="cl">            <span class="n">req_state</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">request_states</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">req_id</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="n">req_state</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">                <span class="c1"># Ignore output for already-aborted request.</span>
-</span></span><span class="line"><span class="cl">                <span class="k">continue</span>
+</span></span><span class="line"><span class="cl">    <span class="n">request_outputs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">RequestOutput</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+</span></span><span class="line"><span class="cl">    <span class="n">reqs_to_abort</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+</span></span><span class="line"><span class="cl">    <span class="k">for</span> <span class="n">engine_core_output</span> <span class="ow">in</span> <span class="n">engine_core_outputs</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="n">req_id</span> <span class="o">=</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">request_id</span>
+</span></span><span class="line"><span class="cl">        <span class="n">req_state</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">request_states</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">req_id</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">req_state</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="c1"># Ignore output for already-aborted request.</span>
+</span></span><span class="line"><span class="cl">            <span class="k">continue</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">            <span class="c1"># 1) Compute stats for this iteration.</span>
-</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">_update_stats_from_output</span><span class="p">(</span><span class="n">req_state</span><span class="p">,</span> <span class="n">engine_core_output</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">                                           <span class="n">engine_core_timestamp</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">                                           <span class="n">iteration_stats</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># 1) Compute stats for this iteration.</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_update_stats_from_output</span><span class="p">(</span><span class="n">req_state</span><span class="p">,</span> <span class="n">engine_core_output</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                       <span class="n">engine_core_timestamp</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                       <span class="n">iteration_stats</span><span class="p">)</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">            <span class="n">new_token_ids</span> <span class="o">=</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">new_token_ids</span>
-</span></span><span class="line"><span class="cl">            <span class="n">finish_reason</span> <span class="o">=</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">finish_reason</span>
-</span></span><span class="line"><span class="cl">            <span class="n">stop_reason</span> <span class="o">=</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">stop_reason</span>
+</span></span><span class="line"><span class="cl">        <span class="n">new_token_ids</span> <span class="o">=</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">new_token_ids</span>
+</span></span><span class="line"><span class="cl">        <span class="n">finish_reason</span> <span class="o">=</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">finish_reason</span>
+</span></span><span class="line"><span class="cl">        <span class="n">stop_reason</span> <span class="o">=</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">stop_reason</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">            <span class="n">req_state</span><span class="o">.</span><span class="n">is_prefilling</span> <span class="o">=</span> <span class="kc">False</span>
+</span></span><span class="line"><span class="cl">        <span class="n">req_state</span><span class="o">.</span><span class="n">is_prefilling</span> <span class="o">=</span> <span class="kc">False</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">            <span class="c1"># 2) Detokenize the token ids into text and perform stop checks.</span>
-</span></span><span class="line"><span class="cl">            <span class="n">stop_string</span> <span class="o">=</span> <span class="n">req_state</span><span class="o">.</span><span class="n">detokenizer</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
-</span></span><span class="line"><span class="cl">                <span class="n">new_token_ids</span><span class="p">,</span> <span class="n">finish_reason</span> <span class="o">==</span> <span class="n">FinishReason</span><span class="o">.</span><span class="n">STOP</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="n">stop_string</span> <span class="ow">and</span> <span class="n">finish_reason</span> <span class="o">!=</span> <span class="n">FinishReason</span><span class="o">.</span><span class="n">STOP</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">                <span class="n">finish_reason</span> <span class="o">=</span> <span class="n">FinishReason</span><span class="o">.</span><span class="n">STOP</span>
-</span></span><span class="line"><span class="cl">                <span class="n">stop_reason</span> <span class="o">=</span> <span class="n">stop_string</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># 2) Detokenize the token ids into text and perform stop checks.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">stop_string</span> <span class="o">=</span> <span class="n">req_state</span><span class="o">.</span><span class="n">detokenizer</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">            <span class="n">new_token_ids</span><span class="p">,</span> <span class="n">finish_reason</span> <span class="o">==</span> <span class="n">FinishReason</span><span class="o">.</span><span class="n">STOP</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">stop_string</span> <span class="ow">and</span> <span class="n">finish_reason</span> <span class="o">!=</span> <span class="n">FinishReason</span><span class="o">.</span><span class="n">STOP</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="n">finish_reason</span> <span class="o">=</span> <span class="n">FinishReason</span><span class="o">.</span><span class="n">STOP</span>
+</span></span><span class="line"><span class="cl">            <span class="n">stop_reason</span> <span class="o">=</span> <span class="n">stop_string</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">            <span class="c1"># 3) Compute sample and prompt logprobs for request, if required.</span>
-</span></span><span class="line"><span class="cl">            <span class="n">req_state</span><span class="o">.</span><span class="n">logprobs_processor</span><span class="o">.</span><span class="n">update_from_output</span><span class="p">(</span><span class="n">engine_core_output</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># 3) Compute sample and prompt logprobs for request, if required.</span>
+</span></span><span class="line"><span class="cl">        <span class="n">req_state</span><span class="o">.</span><span class="n">logprobs_processor</span><span class="o">.</span><span class="n">update_from_output</span><span class="p">(</span><span class="n">engine_core_output</span><span class="p">)</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">            <span class="c1"># 4) Create and handle RequestOutput objects.</span>
-</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="n">request_output</span> <span class="o">:=</span> <span class="n">req_state</span><span class="o">.</span><span class="n">make_request_output</span><span class="p">(</span>
-</span></span><span class="line"><span class="cl">                    <span class="n">new_token_ids</span><span class="p">,</span> <span class="n">finish_reason</span><span class="p">,</span> <span class="n">stop_reason</span><span class="p">):</span>
-</span></span><span class="line"><span class="cl">                <span class="k">if</span> <span class="n">req_state</span><span class="o">.</span><span class="n">queue</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">                    <span class="c1"># AsyncLLM: put into queue for handling by generate().</span>
-</span></span><span class="line"><span class="cl">                    <span class="n">req_state</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">request_output</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">                <span class="k">else</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">                    <span class="c1"># LLMEngine: return list of RequestOutputs.</span>
-</span></span><span class="line"><span class="cl">                    <span class="n">request_outputs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">request_output</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># 4) Create and handle RequestOutput objects.</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">request_output</span> <span class="o">:=</span> <span class="n">req_state</span><span class="o">.</span><span class="n">make_request_output</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">                <span class="n">new_token_ids</span><span class="p">,</span> <span class="n">finish_reason</span><span class="p">,</span> <span class="n">stop_reason</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="n">req_state</span><span class="o">.</span><span class="n">queue</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="c1"># AsyncLLM: put into queue for handling by generate().</span>
+</span></span><span class="line"><span class="cl">                <span class="n">req_state</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">request_output</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="k">else</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="c1"># LLMEngine: return list of RequestOutputs.</span>
+</span></span><span class="line"><span class="cl">                <span class="n">request_outputs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">request_output</span><span class="p">)</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">            <span class="c1"># Free completed requests.</span>
-</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="n">finish_reason</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">                <span class="bp">self</span><span class="o">.</span><span class="n">request_states</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">req_id</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">                <span class="c1"># Remove parent request if applicable.</span>
-</span></span><span class="line"><span class="cl">                <span class="n">parent_req</span> <span class="o">=</span> <span class="n">req_state</span><span class="o">.</span><span class="n">parent_req</span>
-</span></span><span class="line"><span class="cl">                <span class="k">if</span> <span class="n">parent_req</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">parent_req</span><span class="o">.</span><span class="n">child_requests</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">                    <span class="bp">self</span><span class="o">.</span><span class="n">parent_requests</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">parent_req</span><span class="o">.</span><span class="n">request_id</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-</span></span><span class="line"><span class="cl">                <span class="k">if</span> <span class="ow">not</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">finished</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">                    <span class="c1"># If req not finished in EngineCore, but Detokenizer</span>
-</span></span><span class="line"><span class="cl">                    <span class="c1"># detected stop string, abort needed in EngineCore.</span>
-</span></span><span class="line"><span class="cl">                    <span class="n">reqs_to_abort</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">req_id</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="c1"># Free completed requests.</span>
+</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="n">finish_reason</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">request_states</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">req_id</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="c1"># Remove parent request if applicable.</span>
+</span></span><span class="line"><span class="cl">            <span class="n">parent_req</span> <span class="o">=</span> <span class="n">req_state</span><span class="o">.</span><span class="n">parent_req</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="n">parent_req</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">parent_req</span><span class="o">.</span><span class="n">child_requests</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="bp">self</span><span class="o">.</span><span class="n">parent_requests</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">parent_req</span><span class="o">.</span><span class="n">request_id</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="k">if</span> <span class="ow">not</span> <span class="n">engine_core_output</span><span class="o">.</span><span class="n">finished</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">                <span class="c1"># If req not finished in EngineCore, but Detokenizer</span>
+</span></span><span class="line"><span class="cl">                <span class="c1"># detected stop string, abort needed in EngineCore.</span>
+</span></span><span class="line"><span class="cl">                <span class="n">reqs_to_abort</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">req_id</span><span class="p">)</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">                <span class="c1"># Track per-request stats</span>
-</span></span><span class="line"><span class="cl">                <span class="bp">self</span><span class="o">.</span><span class="n">_update_stats_from_finished</span><span class="p">(</span><span class="n">req_state</span><span class="p">,</span> <span class="n">finish_reason</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">                                                 <span class="n">iteration_stats</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">            <span class="c1"># Track per-request stats</span>
+</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">_update_stats_from_finished</span><span class="p">(</span><span class="n">req_state</span><span class="p">,</span> <span class="n">finish_reason</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">                                             <span class="n">iteration_stats</span><span class="p">)</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">lora_states</span><span class="o">.</span><span class="n">update_iteration_stats</span><span class="p">(</span><span class="n">iteration_stats</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="bp">self</span><span class="o">.</span><span class="n">lora_states</span><span class="o">.</span><span class="n">update_iteration_stats</span><span class="p">(</span><span class="n">iteration_stats</span><span class="p">)</span>
 </span></span><span class="line"><span class="cl">
-</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="n">OutputProcessorOutput</span><span class="p">(</span>
-</span></span><span class="line"><span class="cl">            <span class="n">request_outputs</span><span class="o">=</span><span class="n">request_outputs</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">            <span class="n">reqs_to_abort</span><span class="o">=</span><span class="n">reqs_to_abort</span><span class="p">,</span>
-</span></span><span class="line"><span class="cl">        <span class="p">)</span>
-</span></span></code></pre></div><p>2.3 对于已经生成stop string的请求，使用zmq通信库对EngineCore进程发送请求抛弃消息</p>
-<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">abort_requests</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request_ids</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">request_ids</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-</span></span><span class="line"><span class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">_send_input</span><span class="p">(</span><span class="n">EngineCoreRequestType</span><span class="o">.</span><span class="n">ABORT</span><span class="p">,</span> <span class="n">request_ids</span><span class="p">)</span>
-</span></span></code></pre></div><p>c</p>
-<ol start="3">
-<li>返回所有推理结果  return self.engine_class.validate_outputs(outputs, RequestOutput)</li>
-</ol>
-<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl">    <span class="nd">@classmethod</span>
-</span></span><span class="line"><span class="cl">    <span class="k">def</span> <span class="nf">validate_outputs</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">outputs</span><span class="p">,</span> <span class="n">output_type</span><span class="p">):</span>
-</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="n">outputs</span>
-</span></span></code></pre></div><p>b</p>
-<h1 id="参数">参数</h1>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="n">OutputProcessorOutput</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">        <span class="n">request_outputs</span><span class="o">=</span><span class="n">request_outputs</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="n">reqs_to_abort</span><span class="o">=</span><span class="n">reqs_to_abort</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="p">)</span>
+</span></span></code></pre></div><h4 id="23">2.3</h4>
+<p>对于已经生成stop string的请求，使用zmq通信库对EngineCore进程发送请求抛弃消息</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="k">def</span> <span class="nf">abort_requests</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request_ids</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">request_ids</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_send_input</span><span class="p">(</span><span class="n">EngineCoreRequestType</span><span class="o">.</span><span class="n">ABORT</span><span class="p">,</span> <span class="n">request_ids</span><span class="p">)</span>
+</span></span></code></pre></div><h3 id="3-返回所有推理结果">3. 返回所有推理结果</h3>
+<p>return self.engine_class.validate_outputs(outputs, RequestOutput)</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-python" data-lang="python"><span class="line"><span class="cl"><span class="nd">@classmethod</span>
+</span></span><span class="line"><span class="cl"><span class="k">def</span> <span class="nf">validate_outputs</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">outputs</span><span class="p">,</span> <span class="n">output_type</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="n">outputs</span>
+</span></span></code></pre></div><h2 id="参数">参数</h2>
 <p>block_size是单个block能装下多少个token的kvcache</p>
+<p>llm_engine的参数虽然是通过调用旧版本的 from_engine_arg获得，但还是会经过一遍v1的 from_engine_arg，从中确定executor_class，并且init函数还是使用的v1版本</p>
 
             </div>
         </article></main>
