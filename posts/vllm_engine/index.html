@@ -1,13 +1,13 @@
 <!DOCTYPE html>
-<html lang="en-gb"><head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script><meta charset="utf-8">
+<html lang="en-gb"><head><meta charset="utf-8">
 <meta http-equiv="content-type" content="text/html">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title itemprop="name">VLLM | NAN blog</title>
-<meta property="og:title" content="VLLM | NAN blog" />
-<meta name="twitter:title" content="VLLM | NAN blog" />
-<meta itemprop="name" content="VLLM | NAN blog" />
-<meta name="application-name" content="VLLM | NAN blog" />
+<title itemprop="name">VLLM_Engine | NAN blog</title>
+<meta property="og:title" content="VLLM_Engine | NAN blog" />
+<meta name="twitter:title" content="VLLM_Engine | NAN blog" />
+<meta itemprop="name" content="VLLM_Engine | NAN blog" />
+<meta name="application-name" content="VLLM_Engine | NAN blog" />
 <meta property="og:site_name" content="NAN blog" />
 
 <meta name="description" content="Record of Learning Journey">
@@ -18,7 +18,7 @@
 <meta property="og:locale" content="en-gb" />
 <meta name="language" content="en-gb" />
 
-  <link rel="alternate" hreflang="en-gb" href="http://localhost:1313/posts/vllm/" title="English" />
+  <link rel="alternate" hreflang="en-gb" href="https://theflash010.github.io/posts/vllm_engine/" title="English" />
 
 
 
@@ -31,7 +31,7 @@
     <meta property="og:type" content="article" />
     <meta property="og:article:published_time" content=2025-04-08T10:04:58&#43;0800 />
     <meta property="article:published_time" content=2025-04-08T10:04:58&#43;0800 />
-    <meta property="og:url" content="http://localhost:1313/posts/vllm/" />
+    <meta property="og:url" content="https://theflash010.github.io/posts/vllm_engine/" />
 
     
     <meta property="og:article:author" content="Nan Z" />
@@ -46,7 +46,7 @@
     {
         "@context": "http://schema.org",
         "@type": "Article",
-        "headline": "VLLM",
+        "headline": "VLLM_Engine",
         "author": {
         "@type": "Person",
         "name": ""
@@ -71,9 +71,9 @@
 <meta name="generator" content="Hugo 0.145.0">
 
     
-    <meta property="og:url" content="http://localhost:1313/posts/vllm/">
+    <meta property="og:url" content="https://theflash010.github.io/posts/vllm_engine/">
   <meta property="og:site_name" content="NAN blog">
-  <meta property="og:title" content="VLLM">
+  <meta property="og:title" content="VLLM_Engine">
   <meta property="og:description" content="VLLM推理框架 VLLM Engine四个组件 1. Tokenizer 2. Processor (convert Inputs –&gt; EngineCoreRequests) Engine中Processor的定义代码如下：
 self.processor = Processor(vllm_config=vllm_config, tokenizer=self.tokenizer, #processor需要tokenizer input_registry=input_registry, mm_registry=mm_registry) Processor的主要操作代码如下：将输入prompt转变成EngineCoreRequests
 def process_inputs( self, #processor类 request_id: str, prompt: PromptType, params: Union[SamplingParams, PoolingParams], arrival_time: Optional[float] = None, lora_request: Optional[LoRARequest] = None, trace_headers: Optional[Mapping[str, str]] = None, prompt_adapter_request: Optional[PromptAdapterRequest] = None, priority: int = 0, ) -&gt; EngineCoreRequest: # TODO(woosuk): Support pooling models. # TODO(woosuk): Support encoder-decoder models. self._validate_lora(lora_request) self._validate_params(params) if priority != 0: raise ValueError(&#34;V1 does not support priority yet.&#34;) if trace_headers is not None: raise ValueError(&#34;V1 does not support tracing yet.&#34;) if prompt_adapter_request is not None: raise ValueError(&#34;V1 does not support prompt_adapter_request.&#34;) if arrival_time is None: arrival_time = time.time() # Process inputs, which includes: # 1. Tokenize text prompt, with LoRA request if one exists. # 2. For multimodal models with a merged preprocessor, preprocess # multimodal data and expand prompt token ids accordingly. # 3. Apply prompt adapter to prompt token ids if one exists. processed_inputs: ProcessorInputs = self.input_preprocessor.preprocess( prompt, lora_request=lora_request, prompt_adapter_request=prompt_adapter_request, return_mm_hashes=self.use_hash, ) eos_token_id = self.input_preprocessor.get_eos_token_id(lora_request) self._validate_model_inputs(processed_inputs, lora_request) if is_encoder_decoder_inputs(processed_inputs): decoder_inputs = SingletonInputsAdapter( processed_inputs[&#34;decoder&#34;]) encoder_inputs = SingletonInputsAdapter( processed_inputs[&#34;encoder&#34;]) else: decoder_inputs = SingletonInputsAdapter(processed_inputs) encoder_inputs = None # TODO: Impl encoder-decoder if encoder_inputs is not None: raise NotImplementedError assert isinstance(params, SamplingParams) # TODO: can we avoid cloning here in multiproc case? sampling_params = params.clone() # If unset max tokens, then generate up to the max_model_len. if sampling_params.max_tokens is None: sampling_params.max_tokens = (self.model_config.max_model_len - len(decoder_inputs.prompt_token_ids)) sampling_params.update_from_generation_config( self.generation_config_fields, eos_token_id) sampling_params.update_from_tokenizer( self.tokenizer.get_lora_tokenizer(lora_request)) # Multimodal related. sorted_mm_inputs: Optional[list[MultiModalKwargs]] = None sorted_mm_positions: Optional[list[PlaceholderRange]] = None sorted_mm_hashes: Optional[list[str]] = None if (decoder_mm_inputs := decoder_inputs.multi_modal_data): assert isinstance(decoder_mm_inputs, MultiModalKwargs) # The output of merged multi-modal processor (`decoder_mm_inputs`) # contains the kwargs for all items from all modalities. # This code separates them so that there is one set of kwargs # per item per modality. individual_mm_inputs = [ MultiModalKwargs.from_items([item]) for modality in decoder_mm_inputs.modalities for item in decoder_mm_inputs.get_items(modality) ] # Merge and flatten multimodal placeholders, hashes and inputs # from dictionaries to lists, and sort them by each item&#39;s position # in the input sequence. # NOTE: interleaved modalities are not supported. ( sorted_modalities, sorted_mm_positions, sorted_mm_hashes, ) = merge_and_sort_multimodal_metadata( decoder_inputs.multi_modal_placeholders, decoder_inputs.multi_modal_hashes if self.use_hash else None, ) # NOTE: Sort multimodal inputs/kwargs ONLY IF there are multiple # modalities involved. if len(sorted_modalities) &gt; 1: modality_order_dict = { modality: order for order, modality in enumerate(sorted_modalities) } # Sanity check to make sure each multimodal input has only one # modality key. for mm_input in individual_mm_inputs: assert len(mm_input.modalities) == 1 # Sort MultiModalKwargs to match sorted_mm_positions sorted_mm_inputs = sorted( individual_mm_inputs, key=lambda mm_input: modality_order_dict[list( mm_input.modalities)[0]]) else: sorted_mm_inputs = individual_mm_inputs return EngineCoreRequest( request_id=request_id, prompt=decoder_inputs.prompt, prompt_token_ids=decoder_inputs.prompt_token_ids, mm_inputs=sorted_mm_inputs, mm_hashes=sorted_mm_hashes, mm_placeholders=sorted_mm_positions, sampling_params=sampling_params, eos_token_id=eos_token_id, arrival_time=arrival_time, lora_request=lora_request, ) 3. OutputProcessor(convert EngineCoreOutputs –&gt; RequestOutput) Engine中OutPutProcessor的定义代码如下：">
@@ -87,7 +87,7 @@ def process_inputs( self, #processor类 request_id: str, prompt: PromptType, par
     
     
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="VLLM">
+  <meta name="twitter:title" content="VLLM_Engine">
   <meta name="twitter:description" content="VLLM推理框架 VLLM Engine四个组件 1. Tokenizer 2. Processor (convert Inputs –&gt; EngineCoreRequests) Engine中Processor的定义代码如下：
 self.processor = Processor(vllm_config=vllm_config, tokenizer=self.tokenizer, #processor需要tokenizer input_registry=input_registry, mm_registry=mm_registry) Processor的主要操作代码如下：将输入prompt转变成EngineCoreRequests
 def process_inputs( self, #processor类 request_id: str, prompt: PromptType, params: Union[SamplingParams, PoolingParams], arrival_time: Optional[float] = None, lora_request: Optional[LoRARequest] = None, trace_headers: Optional[Mapping[str, str]] = None, prompt_adapter_request: Optional[PromptAdapterRequest] = None, priority: int = 0, ) -&gt; EngineCoreRequest: # TODO(woosuk): Support pooling models. # TODO(woosuk): Support encoder-decoder models. self._validate_lora(lora_request) self._validate_params(params) if priority != 0: raise ValueError(&#34;V1 does not support priority yet.&#34;) if trace_headers is not None: raise ValueError(&#34;V1 does not support tracing yet.&#34;) if prompt_adapter_request is not None: raise ValueError(&#34;V1 does not support prompt_adapter_request.&#34;) if arrival_time is None: arrival_time = time.time() # Process inputs, which includes: # 1. Tokenize text prompt, with LoRA request if one exists. # 2. For multimodal models with a merged preprocessor, preprocess # multimodal data and expand prompt token ids accordingly. # 3. Apply prompt adapter to prompt token ids if one exists. processed_inputs: ProcessorInputs = self.input_preprocessor.preprocess( prompt, lora_request=lora_request, prompt_adapter_request=prompt_adapter_request, return_mm_hashes=self.use_hash, ) eos_token_id = self.input_preprocessor.get_eos_token_id(lora_request) self._validate_model_inputs(processed_inputs, lora_request) if is_encoder_decoder_inputs(processed_inputs): decoder_inputs = SingletonInputsAdapter( processed_inputs[&#34;decoder&#34;]) encoder_inputs = SingletonInputsAdapter( processed_inputs[&#34;encoder&#34;]) else: decoder_inputs = SingletonInputsAdapter(processed_inputs) encoder_inputs = None # TODO: Impl encoder-decoder if encoder_inputs is not None: raise NotImplementedError assert isinstance(params, SamplingParams) # TODO: can we avoid cloning here in multiproc case? sampling_params = params.clone() # If unset max tokens, then generate up to the max_model_len. if sampling_params.max_tokens is None: sampling_params.max_tokens = (self.model_config.max_model_len - len(decoder_inputs.prompt_token_ids)) sampling_params.update_from_generation_config( self.generation_config_fields, eos_token_id) sampling_params.update_from_tokenizer( self.tokenizer.get_lora_tokenizer(lora_request)) # Multimodal related. sorted_mm_inputs: Optional[list[MultiModalKwargs]] = None sorted_mm_positions: Optional[list[PlaceholderRange]] = None sorted_mm_hashes: Optional[list[str]] = None if (decoder_mm_inputs := decoder_inputs.multi_modal_data): assert isinstance(decoder_mm_inputs, MultiModalKwargs) # The output of merged multi-modal processor (`decoder_mm_inputs`) # contains the kwargs for all items from all modalities. # This code separates them so that there is one set of kwargs # per item per modality. individual_mm_inputs = [ MultiModalKwargs.from_items([item]) for modality in decoder_mm_inputs.modalities for item in decoder_mm_inputs.get_items(modality) ] # Merge and flatten multimodal placeholders, hashes and inputs # from dictionaries to lists, and sort them by each item&#39;s position # in the input sequence. # NOTE: interleaved modalities are not supported. ( sorted_modalities, sorted_mm_positions, sorted_mm_hashes, ) = merge_and_sort_multimodal_metadata( decoder_inputs.multi_modal_placeholders, decoder_inputs.multi_modal_hashes if self.use_hash else None, ) # NOTE: Sort multimodal inputs/kwargs ONLY IF there are multiple # modalities involved. if len(sorted_modalities) &gt; 1: modality_order_dict = { modality: order for order, modality in enumerate(sorted_modalities) } # Sanity check to make sure each multimodal input has only one # modality key. for mm_input in individual_mm_inputs: assert len(mm_input.modalities) == 1 # Sort MultiModalKwargs to match sorted_mm_positions sorted_mm_inputs = sorted( individual_mm_inputs, key=lambda mm_input: modality_order_dict[list( mm_input.modalities)[0]]) else: sorted_mm_inputs = individual_mm_inputs return EngineCoreRequest( request_id=request_id, prompt=decoder_inputs.prompt, prompt_token_ids=decoder_inputs.prompt_token_ids, mm_inputs=sorted_mm_inputs, mm_hashes=sorted_mm_hashes, mm_placeholders=sorted_mm_positions, sampling_params=sampling_params, eos_token_id=eos_token_id, arrival_time=arrival_time, lora_request=lora_request, ) 3. OutputProcessor(convert EngineCoreOutputs –&gt; RequestOutput) Engine中OutPutProcessor的定义代码如下：">
@@ -95,7 +95,7 @@ def process_inputs( self, #processor类 request_id: str, prompt: PromptType, par
 
     
 
-    <link rel="canonical" href="http://localhost:1313/posts/vllm/">
+    <link rel="canonical" href="https://theflash010.github.io/posts/vllm_engine/">
     <link href="/style.min.2d921c18cf1ec555ffc03d59a8adc211c402c68c930c27d6a0c306ab175a8d09.css" rel="stylesheet">
     <link href="/code-highlight.min.706d31975fec544a864cb7f0d847a73ea55ca1df91bf495fd12a177138d807cf.css" rel="stylesheet">
 
@@ -109,7 +109,7 @@ def process_inputs( self, #processor类 request_id: str, prompt: PromptType, par
 
 
 
-<link rel="manifest" href="http://localhost:1313/site.webmanifest">
+<link rel="manifest" href="https://theflash010.github.io/site.webmanifest">
 
 <meta name="msapplication-config" content="/browserconfig.xml">
 <meta name="msapplication-TileColor" content="#2d89ef">
@@ -120,14 +120,15 @@ def process_inputs( self, #processor类 request_id: str, prompt: PromptType, par
 
     
     
+    
 </head>
 <body data-theme = "auto" class="notransition">
 
-<script src="/js/theme.js"></script>
+<script src="/js/theme.min.8961c317c5b88b953fe27525839672c9343f1058ab044696ca225656c8ba2ab0.js" integrity="sha256-iWHDF8W4i5U/4nUlg5ZyyTQ/EFirBEaWyiJWVsi6KrA="></script>
 
 <div class="navbar" role="navigation">
     <nav class="menu" aria-label="Main Navigation">
-        <a href="http://localhost:1313/" class="logo">
+        <a href="https://theflash010.github.io/" class="logo">
             <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" 
 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" 
 stroke-linejoin="round" class="feather feather-home">
@@ -188,7 +189,7 @@ stroke-linejoin="round" class="feather feather-home">
     <main class="page-content" aria-label="Content">
         <article>
             <header class="header">
-                <h1 class="header-title">VLLM</h1>
+                <h1 class="header-title">VLLM_Engine</h1>
                 
                 
                 
@@ -1307,7 +1308,7 @@ stroke-linejoin="round" class="feather feather-home">
 
 
     
-    <script async src="http://localhost:1313/js/main.js" ></script>
+    <script src="https://theflash010.github.io/js/main.min.35f435a5d8eac613c52daa28d8af544a4512337d3e95236e4a4978417b8dcb2f.js" integrity="sha256-NfQ1pdjqxhPFLaoo2K9USkUSM30&#43;lSNuSkl4QXuNyy8="></script>
 
     
 
